@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3DGS Web Viewer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>3DGS Web Viewer</h1>
+          <p id="scenePath">Scene: loading</p>
+        </div>
+        <div class="mode-tabs" role="tablist" aria-label="Display mode">
+          <button class="mode-tab is-active" type="button" data-mode="raw">Raw</button>
+          <button class="mode-tab" type="button" data-mode="overlay">Overlay</button>
+          <button class="mode-tab" type="button" data-mode="side-by-side">Side by side</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section id="viewer" class="viewer mode-raw" tabindex="0" aria-label="Interactive viewer">
+          <div class="image-frame raw-frame">
+            <img id="rawImage" alt="Raw render" />
+            <span class="frame-label">Raw</span>
+          </div>
+          <div class="image-frame refined-frame">
+            <img id="refinedImage" alt="Refined render" />
+            <span class="frame-label">Refined</span>
+          </div>
+        </section>
+      </main>
+
+      <footer class="statusbar">
+        <span id="cameraState">Camera idle</span>
+        <span id="pipelineState">Starting</span>
+        <span id="cameraReadout">Camera: --</span>
+        <span id="renderTime">Render: -- ms</span>
+        <span id="refineLatency">Refine: -- ms</span>
+        <span id="fallbackState">Fallback: unknown</span>
+      </footer>
+    </div>
+    <script src="/static/app.js?v=interaction-throttle" defer></script>
+  </body>
+</html>
