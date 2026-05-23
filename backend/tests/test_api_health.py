@@ -1,11 +1,18 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
+import pytest
 from pytest import MonkeyPatch
 
 from backend.app.main import create_app
+from backend.app.rendering import factory
+from backend.app.rendering import gsplat_renderer
+from backend.app.rendering.gsplat_renderer import GsplatUnavailable
 from backend.app.rendering.mock import MockRenderer
 
 
-def test_health_endpoint() -> None:
+def test_health_endpoint(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
     app = create_app()
     client = TestClient(app)
     response = client.get("/api/health")
@@ -19,7 +26,8 @@ def test_health_endpoint() -> None:
     assert isinstance(app.state.renderer, MockRenderer)
 
 
-def test_render_endpoint_returns_data_url() -> None:
+def test_render_endpoint_returns_data_url(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
     client = TestClient(create_app())
     response = client.post(
         "/api/render",
@@ -43,7 +51,44 @@ def test_render_endpoint_returns_data_url() -> None:
     assert data["renderer"] == "mock-svg-renderer"
 
 
-def test_mock_render_changes_with_camera() -> None:
+def test_renderer_backend_can_force_mock() -> None:
+    renderer = factory.create_renderer(renderer_backend="mock")
+
+    assert isinstance(renderer, MockRenderer)
+
+
+def test_renderer_factory_falls_back_when_gsplat_is_unavailable(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def unavailable_renderer(scene_ply_path: str, gsplat_device: str):
+        raise GsplatUnavailable("test unavailable")
+
+    monkeypatch.setattr(factory, "_create_gsplat_renderer", unavailable_renderer)
+
+    renderer = factory.create_renderer(renderer_backend="gsplat")
+
+    assert isinstance(renderer, MockRenderer)
+    assert renderer.fallback_reason == "gsplat unavailable: test unavailable"
+
+
+def test_gsplat_backend_validation_rejects_missing_cuda_extension(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    renderer = object.__new__(gsplat_renderer.GsplatRenderer)
+
+    def fake_import_module(module_name: str):
+        if module_name == "gsplat.cuda._backend":
+            return SimpleNamespace(_C=None)
+        raise AssertionError(f"unexpected import: {module_name}")
+
+    monkeypatch.setattr(gsplat_renderer.importlib, "import_module", fake_import_module)
+
+    with pytest.raises(GsplatUnavailable, match="CUDA extension"):
+        renderer._validate_gsplat_cuda_backend(torch=SimpleNamespace())
+
+
+def test_mock_render_changes_with_camera(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
     client = TestClient(create_app())
     base_payload = {
         "camera": {
@@ -80,6 +125,7 @@ def test_mock_render_changes_with_camera() -> None:
 
 def test_scene_path_can_be_set_and_cleared(tmp_path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.delenv("SCENE_PLY_PATH", raising=False)
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
     scene_file = tmp_path / "demo_scene.ply"
     scene_file.write_text("ply\nformat ascii 1.0\nend_header\n", encoding="utf-8")
 
@@ -107,6 +153,7 @@ def test_scene_path_can_be_set_and_cleared(tmp_path, monkeypatch: MonkeyPatch) -
 
 def test_scene_path_rejects_missing_ply(tmp_path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.delenv("SCENE_PLY_PATH", raising=False)
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
     app = create_app()
     client = TestClient(app)
 

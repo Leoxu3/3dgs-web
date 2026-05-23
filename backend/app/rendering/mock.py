@@ -14,11 +14,15 @@ from backend.app.rendering.renderer import RenderQuality, RenderResult
 class MockRenderer:
     name = "mock-svg-renderer"
 
-    def __init__(self, scene_ply_path: str = "") -> None:
+    def __init__(self, scene_ply_path: str = "", fallback_reason: str | None = None) -> None:
         self.scene_ply_path = scene_ply_path
+        self.fallback_reason = fallback_reason
 
     def set_scene_ply_path(self, scene_ply_path: str) -> None:
         self.scene_ply_path = scene_ply_path
+
+    def set_fallback_reason(self, fallback_reason: str | None) -> None:
+        self.fallback_reason = fallback_reason
 
     def render(
         self,
@@ -54,6 +58,12 @@ class MockRenderer:
         secondary = "#f2bf5e" if quality == "interactive" else "#49b6ff"
         safe_scene_label = html.escape(scene_label)
         safe_quality = html.escape(quality)
+        safe_fallback_reason = html.escape(self.fallback_reason or "")
+        fallback_markup = (
+            f'<text x="28" y="104" font-size="14" fill="#f2bf5e">Fallback: {safe_fallback_reason}</text>'
+            if safe_fallback_reason
+            else ""
+        )
         min_dim = min(width, height)
         camera_scale = max(0.35, min(2.4, 3.0 / max(camera.distance, 0.1)))
         target_x = camera.target[0] if len(camera.target) > 0 else 0.0
@@ -88,6 +98,7 @@ class MockRenderer:
   <g fill="#f5f7fb" font-family="Inter, Arial, sans-serif">
     <text x="28" y="44" font-size="20" font-weight="700">Raw 3DGS Render Placeholder</text>
     <text x="28" y="76" font-size="14" fill="#aeb8c6">Renderer: {self.name} | Quality: {safe_quality}</text>
+    {fallback_markup}
     <text x="28" y="{height - 92}" font-size="14">Yaw {camera.yaw:.2f} | Pitch {camera.pitch:.2f} | Distance {camera.distance:.2f}</text>
     <text x="28" y="{height - 64}" font-size="14">Target [{target}] | FOV {camera.fov:.1f} | Mock view x/z {target_x:.2f}/{target_z:.2f}</text>
     <text x="28" y="{height - 36}" font-size="14" fill="#aeb8c6">Scene: {safe_scene_label}</text>

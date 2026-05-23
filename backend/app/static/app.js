@@ -129,7 +129,7 @@ async function renderFrame(quality = "interactive") {
 
   if (seq !== renderSeq) return null;
   rawImage.src = result.image_data_url;
-  renderTime.textContent = `Render: ${result.render_ms} ms`;
+  renderTime.textContent = `Render: ${result.render_ms} ms | ${result.renderer}`;
   return result;
 }
 

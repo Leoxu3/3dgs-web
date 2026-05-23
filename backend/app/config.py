@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -14,9 +14,11 @@ APP_ROOT = Path(__file__).resolve().parent
 @dataclass(frozen=True)
 class Settings:
     service_name: str = "3DGS Web Viewer Skeleton"
-    host: str = os.getenv("APP_HOST", "0.0.0.0")
-    port: int = int(os.getenv("APP_PORT", "8000"))
-    scene_ply_path: str = os.getenv("SCENE_PLY_PATH", "")
+    host: str = field(default_factory=lambda: os.getenv("APP_HOST", "0.0.0.0"))
+    port: int = field(default_factory=lambda: int(os.getenv("APP_PORT", "8000")))
+    scene_ply_path: str = field(default_factory=lambda: os.getenv("SCENE_PLY_PATH", ""))
+    renderer_backend: str = field(default_factory=lambda: os.getenv("RENDERER_BACKEND", "auto"))
+    gsplat_device: str = field(default_factory=lambda: os.getenv("GSPLAT_DEVICE", "cuda"))
     static_dir: Path = APP_ROOT / "static"
     project_root: Path = PROJECT_ROOT
 

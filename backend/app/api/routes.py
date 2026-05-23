@@ -39,6 +39,7 @@ def create_api_router(
             "headless_server_friendly": True,
             "desktop_gui_required": False,
             "renderer": renderer.name,
+            "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
             "fallback_mode": refiner.is_fallback,
             "scene": scene_manager.describe_current(),
@@ -49,6 +50,7 @@ def create_api_router(
         return {
             "scene": scene_manager.describe_current(),
             "renderer": renderer.name,
+            "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
             "fallback_mode": refiner.is_fallback,
         }

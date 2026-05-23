@@ -20,7 +20,11 @@ def create_app() -> FastAPI:
         project_root=settings.project_root,
         scene_ply_path=settings.scene_ply_path,
     )
-    renderer = create_renderer(scene_ply_path=scene_manager.scene_ply_path)
+    renderer = create_renderer(
+        scene_ply_path=scene_manager.scene_ply_path,
+        renderer_backend=settings.renderer_backend,
+        gsplat_device=settings.gsplat_device,
+    )
     refiner = create_refiner()
 
     app = FastAPI(
