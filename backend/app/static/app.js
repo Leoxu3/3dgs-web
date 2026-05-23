@@ -16,7 +16,7 @@ const fallbackState = document.querySelector("#fallbackState");
 const modeTabs = Array.from(document.querySelectorAll(".mode-tab"));
 
 const IDLE_DELAY_MS = 700;
-const INTERACTIVE_RENDER_MIN_INTERVAL_MS = 50;
+const INTERACTIVE_RENDER_MIN_INTERVAL_MS = 90;
 const CAMERA_LIMITS = {
   minPitch: -1.45,
   maxPitch: 1.45,
@@ -30,7 +30,12 @@ const camera = {
   distance: 3,
   target: [0, 0, 0],
   fov: 45,
+  up_axis: "z",
 };
+
+const CAMERA_ROTATE_SPEED = 0.01;
+const CAMERA_PAN_SPEED = 0.0018;
+const MAX_POINTER_DELTA = 80;
 
 let isDragging = false;
 let dragMode = "rotate";
@@ -41,8 +46,8 @@ let interactiveRenderInFlight = false;
 let interactiveRenderPending = false;
 let lastInteractiveRenderAt = 0;
 let renderSeq = 0;
+let cameraVersion = 0;
 let refineSeq = 0;
-let activeRenderController = null;
 let activeRefineController = null;
 
 function setPipeline(message, className = "") {
@@ -61,6 +66,7 @@ function cameraSnapshot() {
     distance: camera.distance,
     target: [...camera.target],
     fov: camera.fov,
+    up_axis: camera.up_axis,
   };
 }
 
@@ -68,7 +74,8 @@ function updateCameraReadout() {
   const [x, y, z] = camera.target;
   cameraReadout.textContent =
     `Camera: yaw ${camera.yaw.toFixed(2)} | pitch ${camera.pitch.toFixed(2)} | ` +
-    `dist ${camera.distance.toFixed(2)} | target ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`;
+    `dist ${camera.distance.toFixed(2)} | up ${camera.up_axis.toUpperCase()} | ` +
+    `target ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`;
 }
 
 async function postJson(url, payload, options = {}) {
@@ -104,30 +111,36 @@ async function responseErrorMessage(response) {
 
 function renderSize(quality) {
   const rect = viewer.getBoundingClientRect();
-  const scale = quality === "idle" ? 1 : 0.45;
+  const scale = quality === "idle" ? 1 : 0.28;
+  const minWidth = quality === "idle" ? 320 : 240;
+  const minHeight = quality === "idle" ? 240 : 160;
+  let width = Math.max(minWidth, Math.round(rect.width * scale));
+  let height = Math.max(minHeight, Math.round(rect.height * scale));
+  if (quality === "interactive") {
+    const capScale = Math.min(1, 520 / width, 320 / height);
+    width = Math.max(minWidth, Math.round(width * capScale));
+    height = Math.max(minHeight, Math.round(height * capScale));
+  }
   return {
-    width: Math.max(320, Math.round(rect.width * scale)),
-    height: Math.max(240, Math.round(rect.height * scale)),
+    width,
+    height,
   };
 }
 
 async function renderFrame(quality = "interactive") {
   const seq = ++renderSeq;
+  const requestedCameraVersion = cameraVersion;
   const size = renderSize(quality);
-
-  if (activeRenderController) {
-    activeRenderController.abort();
-  }
-  activeRenderController = new AbortController();
 
   const result = await postJson("/api/render", {
     camera: cameraSnapshot(),
     width: size.width,
     height: size.height,
     quality,
-  }, { signal: activeRenderController.signal });
+  });
 
   if (seq !== renderSeq) return null;
+  if (quality === "idle" && requestedCameraVersion !== cameraVersion) return null;
   rawImage.src = result.image_data_url;
   renderTime.textContent = `Render: ${result.render_ms} ms | ${result.renderer}`;
   return result;
@@ -149,6 +162,7 @@ function markMoving() {
 }
 
 function cameraChanged() {
+  cameraVersion += 1;
   updateCameraReadout();
   markMoving();
   scheduleInteractiveRender();
@@ -222,25 +236,100 @@ async function interactiveRender() {
 }
 
 function rotateCamera(dx, dy) {
-  camera.yaw += dx * 0.01;
+  camera.yaw += dx * CAMERA_ROTATE_SPEED;
   camera.pitch = Math.max(
     CAMERA_LIMITS.minPitch,
-    Math.min(CAMERA_LIMITS.maxPitch, camera.pitch + dy * 0.01)
+    Math.min(CAMERA_LIMITS.maxPitch, camera.pitch - dy * CAMERA_ROTATE_SPEED)
   );
 }
 
+function cameraBasis() {
+  const offset = orbitCameraOffset();
+  const forward = normalizeVector(scaleVector(offset, -1));
+  const worldUp = axisVector(camera.up_axis);
+  const right = normalizeVector(cross(forward, worldUp));
+  const down = normalizeVector(cross(forward, right));
+  return {
+    right,
+    up: scaleVector(down, -1),
+  };
+}
+
+function orbitCameraOffset() {
+  const pitch = clamp(camera.pitch, -Math.PI * 0.5 + 0.0001, Math.PI * 0.5 - 0.0001);
+  const cosPitch = Math.cos(pitch);
+  const { back, right } = orbitReferenceAxes(camera.up_axis);
+  const horizontal = addVectors(
+    scaleVector(back, Math.cos(camera.yaw)),
+    scaleVector(right, Math.sin(camera.yaw))
+  );
+  return addVectors(
+    scaleVector(horizontal, cosPitch),
+    scaleVector(axisVector(camera.up_axis), Math.sin(pitch))
+  );
+}
+
+function orbitReferenceAxes(upAxis) {
+  let back = [0, -1, 0];
+  if (upAxis === "y" || upAxis === "x") {
+    back = [0, 0, 1];
+  }
+  const forward = scaleVector(back, -1);
+  const right = normalizeVector(cross(forward, axisVector(upAxis)));
+  return { back, right };
+}
+
+function axisVector(upAxis) {
+  if (upAxis === "x") return [1, 0, 0];
+  if (upAxis === "y") return [0, 1, 0];
+  return [0, 0, 1];
+}
+
 function panCamera(dx, dy) {
-  const panScale = camera.distance * 0.0018;
-  const yawCos = Math.cos(camera.yaw);
-  const yawSin = Math.sin(camera.yaw);
-  camera.target[0] -= (dx * yawCos - dy * 0.25 * yawSin) * panScale;
-  camera.target[1] += dy * panScale;
-  camera.target[2] += (dx * yawSin + dy * 0.25 * yawCos) * panScale;
+  const panScale = camera.distance * CAMERA_PAN_SPEED;
+  const { right, up } = cameraBasis();
+  const offset = addVectors(
+    scaleVector(right, -dx * panScale),
+    scaleVector(up, dy * panScale)
+  );
+  camera.target = addVectors(camera.target, offset);
+}
+
+function cross(a, b) {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function normalizeVector(vector) {
+  const length = Math.hypot(vector[0], vector[1], vector[2]);
+  if (length <= 1e-8) return vector;
+  return scaleVector(vector, 1 / length);
+}
+
+function scaleVector(vector, scale) {
+  return [vector[0] * scale, vector[1] * scale, vector[2] * scale];
+}
+
+function addVectors(a, b) {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizedUpAxis(value) {
+  return value === "x" || value === "y" || value === "z" ? value : "z";
 }
 
 function updateCameraFromPointer(event) {
-  const dx = event.clientX - lastPointer.x;
-  const dy = event.clientY - lastPointer.y;
+  const rawDx = event.clientX - lastPointer.x;
+  const rawDy = event.clientY - lastPointer.y;
+  const dx = clamp(rawDx, -MAX_POINTER_DELTA, MAX_POINTER_DELTA);
+  const dy = clamp(rawDy, -MAX_POINTER_DELTA, MAX_POINTER_DELTA);
   if (dragMode === "pan") {
     panCamera(dx, dy);
   } else {
@@ -302,17 +391,18 @@ viewer.addEventListener("keydown", (event) => {
   const step = 0.08;
   const zoomStep = 0.2;
   const panStep = camera.distance * 0.035;
+  const { right, up } = cameraBasis();
   let handled = true;
   if (event.key === "ArrowLeft") camera.yaw -= step;
   else if (event.key === "ArrowRight") camera.yaw += step;
-  else if (event.key === "ArrowUp") camera.pitch = Math.max(CAMERA_LIMITS.minPitch, camera.pitch - step);
-  else if (event.key === "ArrowDown") camera.pitch = Math.min(CAMERA_LIMITS.maxPitch, camera.pitch + step);
+  else if (event.key === "ArrowUp") camera.pitch = Math.min(CAMERA_LIMITS.maxPitch, camera.pitch + step);
+  else if (event.key === "ArrowDown") camera.pitch = Math.max(CAMERA_LIMITS.minPitch, camera.pitch - step);
   else if (event.key === "=" || event.key === "+") camera.distance = Math.max(CAMERA_LIMITS.minDistance, camera.distance - zoomStep);
   else if (event.key === "-") camera.distance = Math.min(CAMERA_LIMITS.maxDistance, camera.distance + zoomStep);
-  else if (event.key.toLowerCase() === "a") camera.target[0] -= panStep;
-  else if (event.key.toLowerCase() === "d") camera.target[0] += panStep;
-  else if (event.key.toLowerCase() === "w") camera.target[1] += panStep;
-  else if (event.key.toLowerCase() === "s") camera.target[1] -= panStep;
+  else if (event.key.toLowerCase() === "a") camera.target = addVectors(camera.target, scaleVector(right, -panStep));
+  else if (event.key.toLowerCase() === "d") camera.target = addVectors(camera.target, scaleVector(right, panStep));
+  else if (event.key.toLowerCase() === "w") camera.target = addVectors(camera.target, scaleVector(up, panStep));
+  else if (event.key.toLowerCase() === "s") camera.target = addVectors(camera.target, scaleVector(up, -panStep));
   else if (event.key.toLowerCase() === "r") {
     camera.yaw = 0;
     camera.pitch = 0;
@@ -359,8 +449,9 @@ function sceneState(scene) {
 function updateSceneUi(scene) {
   const displayPath = scene.relative_path || scene.path || "not configured";
   const state = sceneState(scene);
+  camera.up_axis = normalizedUpAxis(scene.vertical_axis);
   scenePath.textContent = `Scene: ${displayPath}`;
-  sceneMeta.textContent = `PLY: ${state} | Size: ${formatBytes(scene.size_bytes)}`;
+  sceneMeta.textContent = `PLY: ${state} | Axis: ${camera.up_axis.toUpperCase()} | Size: ${formatBytes(scene.size_bytes)}`;
   sceneInput.value = scene.path || "";
 }
 
@@ -374,6 +465,7 @@ function setSceneControlsDisabled(disabled) {
 
 function resetRefinementForSceneChange(message) {
   refineSeq += 1;
+  cameraVersion += 1;
   if (activeRefineController) {
     activeRefineController.abort();
   }

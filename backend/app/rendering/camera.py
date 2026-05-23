@@ -13,6 +13,7 @@ class CameraState(BaseModel):
     distance: float = 3.0
     target: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     fov: float = 45.0
+    up_axis: Literal["x", "y", "z"] = "z"
 
 
 class RenderRequest(BaseModel):

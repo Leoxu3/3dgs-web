@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.config import Settings
 from backend.app.rendering.camera import RenderRequest
@@ -90,7 +91,8 @@ def create_api_router(
 
     @router.post("/render")
     async def render(request: RenderRequest) -> dict[str, Any]:
-        result = renderer.render(
+        result = await run_in_threadpool(
+            renderer.render,
             camera=request.camera,
             width=request.width,
             height=request.height,
@@ -100,7 +102,10 @@ def create_api_router(
 
     @router.post("/refine")
     async def refine(request: RefineRequest) -> dict[str, Any]:
-        result: RefinementResult = refiner.refine(request.image_data_url)
+        result: RefinementResult = await run_in_threadpool(
+            refiner.refine,
+            request.image_data_url,
+        )
         return result.to_dict()
 
     return router

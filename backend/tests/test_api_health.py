@@ -9,6 +9,7 @@ from backend.app.rendering import factory
 from backend.app.rendering import gsplat_renderer
 from backend.app.rendering.gsplat_renderer import GsplatUnavailable
 from backend.app.rendering.mock import MockRenderer
+from backend.app.rendering.ply_loader import describe_ply
 
 
 def test_health_endpoint(monkeypatch: MonkeyPatch) -> None:
@@ -85,6 +86,59 @@ def test_gsplat_backend_validation_rejects_missing_cuda_extension(
 
     with pytest.raises(GsplatUnavailable, match="CUDA extension"):
         renderer._validate_gsplat_cuda_backend(torch=SimpleNamespace())
+
+
+def test_orbit_camera_view_matrix_preserves_left_right_orientation() -> None:
+    np = pytest.importorskip("numpy")
+    from backend.app.rendering.camera import CameraState
+
+    viewmat = gsplat_renderer.orbit_camera_view_matrix(camera=CameraState(), np=np)
+    rotation = viewmat[:3, :3]
+    point_right = np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    point_center = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
+    assert np.linalg.det(rotation) == pytest.approx(1.0, abs=1e-5)
+    assert (viewmat @ point_right)[0] > (viewmat @ point_center)[0]
+
+
+def test_orbit_camera_view_matrix_uses_z_up_by_default() -> None:
+    np = pytest.importorskip("numpy")
+    from backend.app.rendering.camera import CameraState
+
+    viewmat = gsplat_renderer.orbit_camera_view_matrix(camera=CameraState(), np=np)
+    point_up = np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float32)
+    point_center = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
+    assert (viewmat @ point_center)[2] > 0.0
+    assert (viewmat @ point_up)[1] < (viewmat @ point_center)[1]
+
+
+def test_orbit_camera_view_matrix_can_use_y_up() -> None:
+    np = pytest.importorskip("numpy")
+    from backend.app.rendering.camera import CameraState
+
+    viewmat = gsplat_renderer.orbit_camera_view_matrix(camera=CameraState(up_axis="y"), np=np)
+    point_up = np.array([0.0, 1.0, 0.0, 1.0], dtype=np.float32)
+    point_center = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
+    assert (viewmat @ point_center)[2] > 0.0
+    assert (viewmat @ point_up)[1] < (viewmat @ point_center)[1]
+
+
+def test_ply_description_reads_vertical_axis(tmp_path) -> None:
+    scene_file = tmp_path / "z_up.ply"
+    scene_file.write_text(
+        "ply\n"
+        "format ascii 1.0\n"
+        "comment Vertical Axis: z\n"
+        "element vertex 0\n"
+        "end_header\n",
+        encoding="ascii",
+    )
+
+    description = describe_ply(str(scene_file))
+
+    assert description["vertical_axis"] == "z"
 
 
 def test_mock_render_changes_with_camera(monkeypatch: MonkeyPatch) -> None:

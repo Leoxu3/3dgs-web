@@ -67,10 +67,11 @@ class MockRenderer:
         min_dim = min(width, height)
         camera_scale = max(0.35, min(2.4, 3.0 / max(camera.distance, 0.1)))
         target_x = camera.target[0] if len(camera.target) > 0 else 0.0
-        target_y = camera.target[1] if len(camera.target) > 1 else 0.0
+        vertical_index = camera_up_axis_index(camera.up_axis)
+        target_vertical = camera.target[vertical_index] if len(camera.target) > vertical_index else 0.0
         target_z = camera.target[2] if len(camera.target) > 2 else 0.0
         center_x = width * 0.5 - target_x * min_dim * 0.08
-        center_y = height * 0.52 + camera.pitch * height * 0.10 + target_y * min_dim * 0.08
+        center_y = height * 0.52 + camera.pitch * height * 0.10 + target_vertical * min_dim * 0.08
         horizon_y = height * (0.52 + camera.pitch * 0.18)
         point_markup = self._mock_point_cloud(
             center_x=center_x,
@@ -163,3 +164,11 @@ class MockRenderer:
             )
         point_markup = "".join(points)
         return f"<g>{point_markup}</g>"
+
+
+def camera_up_axis_index(up_axis: str) -> int:
+    if up_axis == "x":
+        return 0
+    if up_axis == "y":
+        return 1
+    return 2

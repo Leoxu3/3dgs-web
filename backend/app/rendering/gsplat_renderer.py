@@ -472,22 +472,12 @@ def extract_colors(vertex_data: dict[str, Any], count: int, np: Any) -> Any:
 
 def orbit_camera_view_matrix(camera: CameraState, np: Any) -> Any:
     target = np.array((camera.target + [0.0, 0.0, 0.0])[:3], dtype=np.float32)
-    cos_pitch = math.cos(camera.pitch)
-    offset = np.array(
-        [
-            math.sin(camera.yaw) * cos_pitch,
-            math.sin(camera.pitch),
-            -math.cos(camera.yaw) * cos_pitch,
-        ],
-        dtype=np.float32,
-    )
+    offset = orbit_camera_offset(camera=camera, np=np)
     eye = target + offset * max(camera.distance, 0.001)
     forward = normalize_vector(target - eye, np=np)
-    world_up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-    if abs(float(np.dot(forward, world_up))) > 0.98:
-        world_up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    right = normalize_vector(np.cross(world_up, forward), np=np)
-    down = normalize_vector(np.cross(right, forward), np=np)
+    world_up = axis_vector(camera.up_axis, np=np)
+    right = normalize_vector(np.cross(forward, world_up), np=np)
+    down = normalize_vector(np.cross(forward, right), np=np)
 
     view = np.eye(4, dtype=np.float32)
     view[:3, :3] = np.stack([right, down, forward], axis=0)
@@ -500,3 +490,33 @@ def normalize_vector(vector: Any, np: Any) -> Any:
     if norm <= 1e-8:
         return vector
     return vector / norm
+
+
+def orbit_camera_offset(camera: CameraState, np: Any) -> Any:
+    pitch = max(-math.pi * 0.5 + 1e-4, min(math.pi * 0.5 - 1e-4, camera.pitch))
+    cos_pitch = math.cos(pitch)
+    back, right = orbit_reference_axes(camera.up_axis, np=np)
+    return (
+        (back * math.cos(camera.yaw) + right * math.sin(camera.yaw)) * cos_pitch
+        + axis_vector(camera.up_axis, np=np) * math.sin(pitch)
+    ).astype(np.float32)
+
+
+def orbit_reference_axes(up_axis: str, np: Any) -> tuple[Any, Any]:
+    if up_axis == "y":
+        back = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    elif up_axis == "x":
+        back = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    else:
+        back = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+    forward = -back
+    right = normalize_vector(np.cross(forward, axis_vector(up_axis, np=np)), np=np)
+    return back, right
+
+
+def axis_vector(up_axis: str, np: Any) -> Any:
+    if up_axis == "x":
+        return np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    if up_axis == "y":
+        return np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    return np.array([0.0, 0.0, 1.0], dtype=np.float32)
