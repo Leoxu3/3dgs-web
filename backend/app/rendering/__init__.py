@@ -1,1 +1,1 @@
-"""Rendering interfaces and placeholder 3DGS implementation."""
+"""Rendering abstractions and concrete backend implementations."""

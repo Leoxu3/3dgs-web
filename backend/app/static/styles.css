@@ -35,19 +35,15 @@ button {
   min-height: 100vh;
 }
 
-.topbar,
-.statusbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-color: var(--line);
-  background: rgba(13, 17, 23, 0.94);
-}
-
 .topbar {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(320px, 1.35fr) auto;
+  align-items: end;
+  gap: 16px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
+  border-color: var(--line);
+  background: rgba(13, 17, 23, 0.94);
 }
 
 .topbar h1 {
@@ -62,6 +58,61 @@ button {
   color: var(--muted);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.scene-form {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scene-form label {
+  padding-bottom: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.scene-form input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+  background: #0f141b;
+  color: var(--text);
+  font: inherit;
+}
+
+.scene-form input:focus {
+  border-color: var(--blue);
+}
+
+.scene-form button {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-form button[type="submit"] {
+  border-color: color-mix(in srgb, var(--blue), var(--line) 35%);
+  background: var(--blue);
+  color: #07111d;
+}
+
+.scene-form input:disabled,
+.scene-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .mode-tabs {
@@ -86,6 +137,15 @@ button {
 .mode-tab.is-active {
   background: var(--blue);
   color: #07111d;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: var(--line);
+  background: rgba(13, 17, 23, 0.94);
 }
 
 .workspace {
@@ -206,7 +266,16 @@ button {
 @media (max-width: 760px) {
   .topbar {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .scene-form {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .scene-form label {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
   }
 
   .mode-tabs {

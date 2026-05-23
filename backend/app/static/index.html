@@ -9,10 +9,25 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <h1>3DGS Web Viewer</h1>
           <p id="scenePath">Scene: loading</p>
+          <p id="sceneMeta">PLY: --</p>
         </div>
+        <form id="sceneForm" class="scene-form">
+          <label for="sceneInput">PLY path</label>
+          <input
+            id="sceneInput"
+            name="scenePath"
+            type="text"
+            list="sceneOptions"
+            autocomplete="off"
+            placeholder="/path/to/scene.ply"
+          />
+          <datalist id="sceneOptions"></datalist>
+          <button type="submit">Load</button>
+          <button id="sceneClear" type="button">Clear</button>
+        </form>
         <div class="mode-tabs" role="tablist" aria-label="Display mode">
           <button class="mode-tab is-active" type="button" data-mode="raw">Raw</button>
           <button class="mode-tab" type="button" data-mode="overlay">Overlay</button>
@@ -42,6 +57,6 @@
         <span id="fallbackState">Fallback: unknown</span>
       </footer>
     </div>
-    <script src="/static/app.js?v=interaction-throttle" defer></script>
+    <script src="/static/app.js?v=scene-management" defer></script>
   </body>
 </html>

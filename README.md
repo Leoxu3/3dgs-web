@@ -7,7 +7,7 @@ This is a minimal Web app skeleton for a headless-server demo pipeline:
 3. Idle-triggered refinement request.
 4. Fallback mode when Difix3D / Difix3D+ is unavailable.
 
-The current implementation intentionally uses a stub renderer and fallback refiner. It does not require PyQt, DearPyGui, Tkinter, OpenCV `imshow`, X11, or Wayland.
+The current implementation intentionally uses a `MockRenderer` and fallback refiner. It does not require PyQt, DearPyGui, Tkinter, OpenCV `imshow`, X11, or Wayland.
 
 ## Setup
 
@@ -45,11 +45,15 @@ APP_RELOAD=1
 ```
 
 Open `http://localhost:8000` locally, or access it through SSH tunneling when running on a remote server.
+The PLY path can also be changed from the Web UI at runtime. Relative paths are resolved from the repository `src/` directory, and the backend validates that selected paths exist and end in `.ply`.
 
 ## Current Skeleton Endpoints
 
 - `GET /api/health`
 - `GET /api/scene`
+- `POST /api/scene`
+- `DELETE /api/scene`
+- `GET /api/scenes`
 - `POST /api/render`
 - `POST /api/refine`
 
@@ -59,9 +63,10 @@ Open `http://localhost:8000` locally, or access it through SSH tunneling when ru
 - Shift-drag, middle-drag, or right-drag to pan the target.
 - Use the mouse wheel to zoom.
 - Arrow keys rotate, `W/A/S/D` pans, `+/-` zooms, and `R` resets the camera when the viewer has focus.
+- Enter a PLY path in the top bar to switch scenes without restarting the server.
 - While the camera is moving, the browser requests low-cost mock raw renders only.
 - After 700 ms of camera idle time, the frontend requests an idle render and sends that image to `/api/refine`.
-- The mock renderer is still used intentionally; it displays camera-dependent placeholder SVG output until a real `gsplat` renderer is integrated.
+- The backend is wired through a renderer abstraction, but still uses `MockRenderer` intentionally; it displays camera-dependent placeholder SVG output until a real `gsplat` renderer is integrated.
 
 ## Test
 
@@ -71,6 +76,6 @@ pytest
 
 ## Next Implementation Steps
 
-- Replace the stub renderer in `backend/app/rendering/renderer.py` with a real `gsplat` implementation.
+- Add a real `gsplat` renderer implementation behind the renderer abstraction in `backend/app/rendering/`.
 - Replace the fallback refiner in `backend/app/refinement/difix.py` with Difix3D / Difix3D+ integration.
 - Keep fallback mode available for demo reliability.

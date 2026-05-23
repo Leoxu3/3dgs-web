@@ -2,6 +2,11 @@ const viewer = document.querySelector("#viewer");
 const rawImage = document.querySelector("#rawImage");
 const refinedImage = document.querySelector("#refinedImage");
 const scenePath = document.querySelector("#scenePath");
+const sceneMeta = document.querySelector("#sceneMeta");
+const sceneForm = document.querySelector("#sceneForm");
+const sceneInput = document.querySelector("#sceneInput");
+const sceneClear = document.querySelector("#sceneClear");
+const sceneOptions = document.querySelector("#sceneOptions");
 const cameraStateLabel = document.querySelector("#cameraState");
 const pipelineState = document.querySelector("#pipelineState");
 const cameraReadout = document.querySelector("#cameraReadout");
@@ -74,9 +79,27 @@ async function postJson(url, payload, options = {}) {
     signal: options.signal,
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new Error(await responseErrorMessage(response));
   }
   return response.json();
+}
+
+async function deleteJson(url) {
+  const response = await fetch(url, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response));
+  }
+  return response.json();
+}
+
+async function responseErrorMessage(response) {
+  try {
+    const data = await response.json();
+    if (typeof data.detail === "string") return data.detail;
+  } catch (_error) {
+    // Fall through to the HTTP status line.
+  }
+  return `${response.status} ${response.statusText}`;
 }
 
 function renderSize(quality) {
@@ -312,12 +335,80 @@ modeTabs.forEach((tab) => {
   });
 });
 
+function formatBytes(bytes) {
+  if (typeof bytes !== "number") return "--";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function sceneState(scene) {
+  if (!scene.path) return "not configured";
+  if (!scene.is_ply) return "not a PLY";
+  if (!scene.exists) return "missing";
+  if (!scene.is_file) return "not a file";
+  return "ready";
+}
+
+function updateSceneUi(scene) {
+  const displayPath = scene.relative_path || scene.path || "not configured";
+  const state = sceneState(scene);
+  scenePath.textContent = `Scene: ${displayPath}`;
+  sceneMeta.textContent = `PLY: ${state} | Size: ${formatBytes(scene.size_bytes)}`;
+  sceneInput.value = scene.path || "";
+}
+
+function setSceneControlsDisabled(disabled) {
+  sceneInput.disabled = disabled;
+  sceneClear.disabled = disabled;
+  sceneForm.querySelectorAll("button").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function resetRefinementForSceneChange(message) {
+  refineSeq += 1;
+  if (activeRefineController) {
+    activeRefineController.abort();
+  }
+  refinedImage.removeAttribute("src");
+  refineLatency.textContent = "Refine: -- ms";
+  cameraStateLabel.textContent = "Camera idle";
+  cameraStateLabel.className = "status-ok";
+  setPipeline(message, "status-ok");
+  scheduleInteractiveRender(true);
+  scheduleIdleRefine();
+}
+
+async function loadSceneCandidates() {
+  try {
+    const response = await fetch("/api/scenes");
+    if (!response.ok) throw new Error(await responseErrorMessage(response));
+    const data = await response.json();
+    sceneOptions.innerHTML = "";
+    data.scenes.forEach((scene) => {
+      const option = document.createElement("option");
+      option.value = scene.path;
+      option.label = scene.relative_path || scene.name || scene.path;
+      sceneOptions.append(option);
+    });
+  } catch (_error) {
+    sceneOptions.innerHTML = "";
+  }
+}
+
 async function loadScene() {
   try {
     const response = await fetch("/api/scene");
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    if (!response.ok) throw new Error(await responseErrorMessage(response));
     const data = await response.json();
-    scenePath.textContent = `Scene: ${data.scene.path || "not configured"}`;
+    updateSceneUi(data.scene);
     fallbackState.textContent = data.fallback_mode ? "Fallback: on" : "Fallback: off";
     fallbackState.className = data.fallback_mode ? "status-busy" : "status-ok";
     setPipeline("Ready", "status-ok");
@@ -326,11 +417,50 @@ async function loadScene() {
   }
 }
 
+async function setScenePath(path) {
+  setSceneControlsDisabled(true);
+  setPipeline("Loading scene", "status-busy");
+  try {
+    const data = await postJson("/api/scene", { path });
+    updateSceneUi(data.scene);
+    await loadSceneCandidates();
+    resetRefinementForSceneChange(path.trim() ? "Scene loaded" : "Scene cleared");
+  } catch (error) {
+    setPipeline(`Scene error: ${error.message}`, "status-error");
+  } finally {
+    setSceneControlsDisabled(false);
+  }
+}
+
+async function clearScenePath() {
+  setSceneControlsDisabled(true);
+  setPipeline("Clearing scene", "status-busy");
+  try {
+    const data = await deleteJson("/api/scene");
+    updateSceneUi(data.scene);
+    resetRefinementForSceneChange("Scene cleared");
+  } catch (error) {
+    setPipeline(`Scene error: ${error.message}`, "status-error");
+  } finally {
+    setSceneControlsDisabled(false);
+  }
+}
+
+sceneForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  setScenePath(sceneInput.value);
+});
+
+sceneClear.addEventListener("click", () => {
+  clearScenePath();
+});
+
 window.addEventListener("resize", () => {
   cameraChanged();
 });
 
 loadScene().then(() => {
+  loadSceneCandidates();
   updateCameraReadout();
   scheduleInteractiveRender(true);
   scheduleIdleRefine();

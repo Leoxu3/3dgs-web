@@ -10,12 +10,17 @@ from backend.app.api.routes import create_api_router
 from backend.app.api.websocket import router as websocket_router
 from backend.app.config import get_settings
 from backend.app.refinement.difix import create_refiner
-from backend.app.rendering.renderer import StubRenderer
+from backend.app.rendering.factory import create_renderer
+from backend.app.scene import SceneManager
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    renderer = StubRenderer(scene_ply_path=settings.scene_ply_path)
+    scene_manager = SceneManager(
+        project_root=settings.project_root,
+        scene_ply_path=settings.scene_ply_path,
+    )
+    renderer = create_renderer(scene_ply_path=scene_manager.scene_ply_path)
     refiner = create_refiner()
 
     app = FastAPI(
@@ -25,11 +30,17 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
     )
     app.state.settings = settings
+    app.state.scene_manager = scene_manager
     app.state.renderer = renderer
     app.state.refiner = refiner
 
     app.include_router(
-        create_api_router(settings=settings, renderer=renderer, refiner=refiner),
+        create_api_router(
+            settings=settings,
+            scene_manager=scene_manager,
+            renderer=renderer,
+            refiner=refiner,
+        ),
         prefix="/api",
     )
     app.include_router(websocket_router, prefix="/api")

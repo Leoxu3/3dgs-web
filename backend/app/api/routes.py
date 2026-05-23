@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from backend.app.config import Settings
 from backend.app.rendering.camera import RenderRequest
-from backend.app.rendering.ply_loader import describe_ply
-from backend.app.rendering.renderer import StubRenderer
+from backend.app.rendering.renderer import Renderer
 from backend.app.refinement.fallback import RefinementResult
+from backend.app.scene import SceneManager, ScenePathError
 
 
 class RefineRequest(BaseModel):
@@ -19,9 +19,14 @@ class RefineRequest(BaseModel):
     camera: dict[str, Any] | None = None
 
 
+class ScenePathRequest(BaseModel):
+    path: str = Field(default="", max_length=4096)
+
+
 def create_api_router(
     settings: Settings,
-    renderer: StubRenderer,
+    scene_manager: SceneManager,
+    renderer: Renderer,
     refiner: Any,
 ) -> APIRouter:
     router = APIRouter()
@@ -36,12 +41,46 @@ def create_api_router(
             "renderer": renderer.name,
             "refiner": refiner.name,
             "fallback_mode": refiner.is_fallback,
+            "scene": scene_manager.describe_current(),
         }
 
     @router.get("/scene")
     async def scene() -> dict[str, Any]:
         return {
-            "scene": describe_ply(settings.scene_ply_path),
+            "scene": scene_manager.describe_current(),
+            "renderer": renderer.name,
+            "refiner": refiner.name,
+            "fallback_mode": refiner.is_fallback,
+        }
+
+    @router.get("/scenes")
+    async def scenes() -> dict[str, Any]:
+        return {
+            "scenes": scene_manager.list_scene_candidates(),
+            "data_dir": str(scene_manager.data_dir),
+        }
+
+    @router.post("/scene")
+    async def set_scene(request: ScenePathRequest) -> dict[str, Any]:
+        try:
+            scene_description = scene_manager.set_scene_ply_path(request.path)
+        except ScenePathError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        renderer.set_scene_ply_path(scene_manager.scene_ply_path)
+        return {
+            "scene": scene_description,
+            "renderer": renderer.name,
+            "refiner": refiner.name,
+            "fallback_mode": refiner.is_fallback,
+        }
+
+    @router.delete("/scene")
+    async def clear_scene() -> dict[str, Any]:
+        scene_description = scene_manager.clear_scene_ply_path()
+        renderer.set_scene_ply_path("")
+        return {
+            "scene": scene_description,
             "renderer": renderer.name,
             "refiner": refiner.name,
             "fallback_mode": refiner.is_fallback,

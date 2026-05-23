@@ -60,7 +60,7 @@ src/
 ### Phase 2: Raw Render Pipeline
 
 - Add 3DGS scene configuration and `.ply` path handling.
-- Implement a renderer interface with a stub first, then a `gsplat` backend.
+- Implement a renderer interface with `MockRenderer` first, then a `gsplat` backend.
 - Return raw rendered frames to the browser while the camera moves.
 - Add render timing / FPS display.
 
