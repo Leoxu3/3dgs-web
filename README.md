@@ -51,7 +51,7 @@ APP_RELOAD=1
 ```
 
 Open `http://localhost:8000` locally, or access it through SSH tunneling when running on a remote server.
-The PLY path can also be changed from the Web UI at runtime. Relative paths are resolved from the repository `src/` directory, and the backend validates that selected paths exist and end in `.ply`.
+The PLY path can also be changed from the Web UI at runtime. Relative paths are resolved from the repository `3dgs-web/` directory, and the backend validates that selected paths exist and end in `.ply`.
 
 ## Difix3D / Difix3D+ Refiner
 
@@ -76,7 +76,7 @@ git clone https://github.com/nv-tlabs/Difix3D.git /path/to/Difix3D
 cd /path/to/Difix3D
 pip install -r requirements.txt
 
-cd /path/to/Computer_Graphics/src
+cd /path/to/Computer_Graphics/3dgs-web
 export REFINER_BACKEND=adapter
 export DIFIX3D_REPO=/path/to/Difix3D
 export DIFIX3D_MODEL_NAME=nvidia/difix

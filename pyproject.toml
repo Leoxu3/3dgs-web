@@ -1,5 +1,5 @@
 [project]
-name = "server-friendly-3dgs-viewer"
+name = "3dgs-web"
 version = "0.1.0"
 description = "Headless-server friendly Web app for an interactive 3D Gaussian Splatting refinement demo."
 requires-python = ">=3.10"
