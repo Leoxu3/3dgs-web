@@ -36,6 +36,14 @@ class Refiner(Protocol):
     name: str
     is_fallback: bool
 
+    def warmup(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> bool | dict[str, Any] | None:
+        """Prepare any lazy runtime state before the first refinement request."""
+        ...
+
     def refine(
         self,
         image_data_url: str,

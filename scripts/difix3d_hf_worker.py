@@ -160,10 +160,12 @@ class HFDifixWorker:
         add_difix_repo_to_path(args.repo)
 
         import torch
+        from PIL import Image
         from diffusers.utils import load_image
         from pipeline_difix import DifixPipeline
 
         self.torch = torch
+        self.Image = Image
         self.load_image = load_image
         self.ref_image = (
             load_image(str(Path(args.ref_image).expanduser())).convert("RGB")
@@ -199,7 +201,17 @@ class HFDifixWorker:
             try:
                 request = json.loads(line)
                 request_id = str(request.get("request_id") or "")
-                response = self.refine(request)
+                action = request.get("action")
+                if action == "ping":
+                    response = {
+                        "request_id": request_id,
+                        "ok": True,
+                        "status": "ready",
+                    }
+                elif action == "warmup":
+                    response = self.warmup(request)
+                else:
+                    response = self.refine(request)
             except Exception as exc:
                 response = {
                     "request_id": request_id,
@@ -209,11 +221,44 @@ class HFDifixWorker:
 
             print(json.dumps(response), flush=True)
 
+    def warmup(self, request: dict[str, Any]) -> dict[str, Any]:
+        request_id = str(request.get("request_id") or "")
+        base_size = max(8, self.args.max_side or 512)
+        image_width = _positive_int(request.get("width")) or base_size
+        image_height = _positive_int(request.get("height")) or base_size
+        dummy_image = self.Image.new(
+            "RGB",
+            (image_width, image_height),
+            color=(127, 127, 127),
+        )
+        _output_image, width, height = self.run_pipeline(dummy_image)
+        return {
+            "request_id": request_id,
+            "ok": True,
+            "status": "ready",
+            "input_width": image_width,
+            "input_height": image_height,
+            "width": width,
+            "height": height,
+        }
+
     def refine(self, request: dict[str, Any]) -> dict[str, Any]:
         input_path = Path(str(request["input"])).expanduser().resolve()
         output_path = Path(str(request["output"])).expanduser().resolve()
         input_image = self.load_image(str(input_path)).convert("RGB")
 
+        output_image, width, height = self.run_pipeline(input_image)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_image.save(output_path)
+        return {
+            "request_id": str(request.get("request_id") or ""),
+            "ok": True,
+            "output": str(output_path),
+            "width": width,
+            "height": height,
+        }
+
+    def run_pipeline(self, input_image: Any) -> tuple[Any, int, int]:
         width, height = select_dimensions(
             requested_width=self.args.width,
             requested_height=self.args.height,
@@ -244,15 +289,15 @@ class HFDifixWorker:
         with self.torch.inference_mode():
             output_image = self.pipe(**pipeline_args).images[0]
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_image.save(output_path)
-        return {
-            "request_id": str(request.get("request_id") or ""),
-            "ok": True,
-            "output": str(output_path),
-            "width": width,
-            "height": height,
-        }
+        return output_image, width, height
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 if __name__ == "__main__":

@@ -120,6 +120,17 @@ class SafeRefiner:
         if callable(close):
             close()
 
+    def warmup(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> bool | dict[str, Any]:
+        warmup = getattr(self.inner, "warmup", None)
+        if not callable(warmup):
+            return False
+        result = warmup(width=width, height=height)
+        return True if result is None else result
+
     def refine(
         self,
         image_data_url: str,
@@ -277,6 +288,14 @@ class WorkerDifixRefiner:
         self._lock = threading.RLock()
         self._process: subprocess.Popen[str] | None = None
 
+    def warmup(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            return self._send_worker_warmup_locked(width=width, height=height)
+
     def refine(
         self,
         image_data_url: str,
@@ -365,6 +384,35 @@ class WorkerDifixRefiner:
         except BrokenPipeError as exc:
             self._terminate_process_locked()
             raise RefinerRuntimeError("worker pipe closed while sending request") from exc
+
+        return self._read_worker_response(process=process, request_id=request_id)
+
+    def _send_worker_warmup_locked(
+        self,
+        width: int | None,
+        height: int | None,
+    ) -> dict[str, Any]:
+        process = self._ensure_process_locked()
+        if process.stdin is None:
+            raise RefinerRuntimeError("worker stdin is unavailable")
+
+        request_id = uuid.uuid4().hex
+        payload = {
+            "request_id": request_id,
+            "action": "warmup",
+            "variant": self.variant,
+        }
+        if width is not None and width > 0:
+            payload["width"] = int(width)
+        if height is not None and height > 0:
+            payload["height"] = int(height)
+
+        try:
+            process.stdin.write(json.dumps(payload) + "\n")
+            process.stdin.flush()
+        except BrokenPipeError as exc:
+            self._terminate_process_locked()
+            raise RefinerRuntimeError("worker pipe closed while sending warmup") from exc
 
         return self._read_worker_response(process=process, request_id=request_id)
 

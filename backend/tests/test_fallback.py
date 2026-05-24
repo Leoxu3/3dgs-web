@@ -210,3 +210,50 @@ def test_worker_refiner_reuses_persistent_process(
     assert first.status == "ok"
     assert second.status == "ok"
     assert count_path.read_text(encoding="ascii") == "1"
+
+
+def test_worker_refiner_warmup_uses_persistent_process(
+    tmp_path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    count_path = tmp_path / "count.txt"
+    warmup_path = tmp_path / "warmup.txt"
+    worker = tmp_path / "worker_refiner.py"
+    worker.write_text(
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"count_path = Path({str(count_path)!r})\n"
+        f"warmup_path = Path({str(warmup_path)!r})\n"
+        "count_path.write_text('1', encoding='ascii')\n"
+        "for line in sys.stdin:\n"
+        "    request = json.loads(line)\n"
+        "    if request.get('action') == 'warmup':\n"
+        "        warmup_path.write_text(f\"{request.get('width')}x{request.get('height')}\", encoding='ascii')\n"
+        "        print(json.dumps({'request_id': request['request_id'], 'ok': True, 'width': request.get('width'), 'height': request.get('height')}), flush=True)\n"
+        "        continue\n"
+        "    Path(request['output']).write_bytes(Path(request['input']).read_bytes())\n"
+        "    print(json.dumps({'request_id': request['request_id'], 'ok': True}), flush=True)\n",
+        encoding="ascii",
+    )
+    monkeypatch.setenv("REFINER_BACKEND", "adapter")
+    monkeypatch.setenv("DIFIX3D_VARIANT", "difix3d_plus")
+    monkeypatch.setenv("DIFIX3D_WORKER_COMMAND", f"{sys.executable} {worker}")
+    monkeypatch.delenv("DIFIX3D_COMMAND", raising=False)
+    monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
+
+    refiner = create_refiner()
+    warmup = refiner.warmup(width=640, height=360)
+    result = refiner.refine(PNG_DATA_URL)
+    close = getattr(refiner, "close", None)
+    if callable(close):
+        close()
+
+    assert result.image_data_url == PNG_DATA_URL
+    assert result.status == "ok"
+    assert isinstance(warmup, dict)
+    assert warmup["ok"] is True
+    assert warmup["width"] == 640
+    assert warmup["height"] == 360
+    assert count_path.read_text(encoding="ascii") == "1"
+    assert warmup_path.read_text(encoding="ascii") == "640x360"

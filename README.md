@@ -86,9 +86,12 @@ export APP_RELOAD=0
 ./scripts/run_dev.sh
 ```
 
-The worker loads the model on the first request and reuses it for later idle
-viewpoints. If Difix3D is installed in a separate conda environment, point the
-worker at that Python executable:
+When the viewer opens, it calls `/api/refiner/warmup`. For the worker backend
+this starts the persistent worker and runs one dummy inference using the
+viewer's current idle render dimensions, so model loading and first CUDA/kernel
+setup happen before the first visible idle refinement request. Later viewpoints
+reuse that same worker process. If Difix3D is installed in a separate conda
+environment, point the worker at that Python executable:
 
 ```bash
 export DIFIX3D_PYTHON=/path/to/miniconda3/envs/difix3d/bin/python
@@ -141,6 +144,7 @@ DIFIX3D_LOCAL_FILES_ONLY=1  # use only when the Hugging Face model is cached
 - `POST /api/scene`
 - `DELETE /api/scene`
 - `GET /api/scenes`
+- `POST /api/refiner/warmup`
 - `POST /api/render`
 - `POST /api/refine`
 - `POST /api/refine-view`

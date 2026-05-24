@@ -52,6 +52,8 @@ let renderSeq = 0;
 let cameraVersion = 0;
 let refineSeq = 0;
 let activeRefineController = null;
+let refinerWarmupPromise = null;
+let refinerWarmupDone = false;
 
 function setPipeline(message, className = "") {
   pipelineState.textContent = message;
@@ -168,6 +170,46 @@ async function deleteJson(url) {
   return response.json();
 }
 
+async function ensureRefinerWarmup() {
+  if (refinerWarmupDone) return null;
+  if (!refinerWarmupPromise) {
+    refinerWarmupPromise = warmupRefiner(renderSize("idle"));
+  }
+  return refinerWarmupPromise;
+}
+
+async function warmupRefiner(size) {
+  setPipeline("Loading refiner", "status-busy");
+  refineLatency.textContent = "Refine: loading";
+
+  try {
+    const data = await postJson("/api/refiner/warmup", {
+      width: size.width,
+      height: size.height,
+    });
+    refinerWarmupDone = true;
+    if (data.fallback_mode) {
+      setFallbackState(true, data.message);
+    } else {
+      setFallbackState(false);
+    }
+    const warmupFailed = data.status === "error";
+    setPipeline(
+      warmupFailed ? "Refiner warmup failed" : "Ready",
+      warmupFailed ? "status-error" : "status-ok"
+    );
+    if (Number.isFinite(Number(data.latency_ms))) {
+      refineLatency.textContent = `Refine: warmup ${Number(data.latency_ms).toFixed(0)} ms`;
+    }
+    return data;
+  } catch (error) {
+    refinerWarmupDone = true;
+    setFallbackState(true, error.message);
+    setPipeline(`Error: ${error.message}`, "status-error");
+    return null;
+  }
+}
+
 async function responseErrorMessage(response) {
   try {
     const data = await response.json();
@@ -272,9 +314,15 @@ async function runIdleRefine() {
   const seq = ++refineSeq;
   const requestedCameraVersion = cameraVersion;
   let controller = null;
-  const size = renderSize("idle");
   cameraStateLabel.textContent = "Camera idle";
   cameraStateLabel.className = "status-ok";
+
+  if (!refinerWarmupDone) {
+    await ensureRefinerWarmup();
+    if (seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
+  }
+
+  const size = renderSize("idle");
   setPipeline("Refining", "status-busy");
   refineLatency.textContent = "Refine: running";
 
@@ -647,5 +695,5 @@ loadScene().then(() => {
   loadSceneCandidates();
   updateCameraReadout();
   scheduleInteractiveRender(true);
-  scheduleIdleRefine();
+  ensureRefinerWarmup().finally(scheduleIdleRefine);
 });

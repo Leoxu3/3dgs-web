@@ -15,6 +15,14 @@ class FallbackRefiner:
     def __init__(self, reason: str = "Difix3D unavailable / fallback mode") -> None:
         self.reason = reason
 
+    def warmup(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> None:
+        _ = width, height
+        return None
+
     def refine(
         self,
         image_data_url: str,

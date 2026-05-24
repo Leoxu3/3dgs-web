@@ -1,10 +1,13 @@
+import threading
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import pytest
 from pytest import MonkeyPatch
 
+from backend.app.api.routes import _refine_view_when_available
 from backend.app.main import create_app
+from backend.app.rendering.camera import RenderRequest
 from backend.app.rendering import factory
 from backend.app.rendering import gsplat_renderer
 from backend.app.rendering.gsplat_renderer import GsplatUnavailable
@@ -73,6 +76,22 @@ def test_refine_endpoint_returns_fallback_result(monkeypatch: MonkeyPatch) -> No
     assert data["fallback_mode"] is True
 
 
+def test_refiner_warmup_endpoint_reports_fallback_ready(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
+    monkeypatch.setenv("REFINER_BACKEND", "fallback")
+    client = TestClient(create_app())
+
+    response = client.post("/api/refiner/warmup", json={})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "fallback"
+    assert data["ready"] is True
+    assert data["fallback_mode"] is True
+
+
 def test_refine_view_endpoint_returns_raw_and_refined(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("RENDERER_BACKEND", "mock")
     monkeypatch.setenv("REFINER_BACKEND", "fallback")
@@ -101,6 +120,41 @@ def test_refine_view_endpoint_returns_raw_and_refined(monkeypatch: MonkeyPatch) 
     assert data["refined"]["image_data_url"] == data["raw"]["image_data_url"]
     assert data["refined"]["status"] == "fallback"
     assert "render_wall_ms" in data["timings_ms"]
+
+
+def test_refine_view_busy_skips_raw_render() -> None:
+    refine_lock = threading.Lock()
+    refine_lock.acquire()
+
+    class ExplodingRenderer:
+        def render(self, **_kwargs: object) -> object:
+            raise AssertionError("render should not run while refiner is busy")
+
+    request = RenderRequest(
+        camera={
+            "yaw": 0,
+            "pitch": 0,
+            "distance": 3,
+            "target": [0, 0, 0],
+            "fov": 45,
+        },
+        width=320,
+        height=240,
+        quality="idle",
+    )
+
+    try:
+        data = _refine_view_when_available(
+            refine_lock,
+            ExplodingRenderer(),  # type: ignore[arg-type]
+            SimpleNamespace(name="test-refiner"),
+            request,
+        )
+    finally:
+        refine_lock.release()
+
+    assert data["raw"] is None
+    assert data["refined"]["status"] == "busy"
 
 
 def test_renderer_backend_can_force_mock() -> None:

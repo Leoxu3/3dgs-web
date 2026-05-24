@@ -16,10 +16,16 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -32,7 +38,9 @@ button {
 .app-shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
 }
 
 .topbar {
@@ -150,6 +158,7 @@ button {
 
 .workspace {
   min-height: 0;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -158,7 +167,7 @@ button {
   display: grid;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -303,7 +312,7 @@ button {
   }
 
   .viewer {
-    min-height: 360px;
+    min-height: 0;
   }
 
   .mode-side-by-side {
