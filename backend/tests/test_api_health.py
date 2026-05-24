@@ -73,6 +73,36 @@ def test_refine_endpoint_returns_fallback_result(monkeypatch: MonkeyPatch) -> No
     assert data["fallback_mode"] is True
 
 
+def test_refine_view_endpoint_returns_raw_and_refined(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
+    monkeypatch.setenv("REFINER_BACKEND", "fallback")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/refine-view",
+        json={
+            "camera": {
+                "yaw": 0,
+                "pitch": 0,
+                "distance": 3,
+                "target": [0, 0, 0],
+                "fov": 45,
+            },
+            "width": 320,
+            "height": 240,
+            "quality": "idle",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["raw"]["image_data_url"].startswith("data:image/svg+xml;base64,")
+    assert data["raw"]["quality"] == "idle"
+    assert data["refined"]["image_data_url"] == data["raw"]["image_data_url"]
+    assert data["refined"]["status"] == "fallback"
+    assert "render_wall_ms" in data["timings_ms"]
+
+
 def test_renderer_backend_can_force_mock() -> None:
     renderer = factory.create_renderer(renderer_backend="mock")
 

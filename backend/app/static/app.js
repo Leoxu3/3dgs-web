@@ -16,6 +16,7 @@ const fallbackState = document.querySelector("#fallbackState");
 const modeTabs = Array.from(document.querySelectorAll(".mode-tab"));
 
 const IDLE_DELAY_MS = 400;
+const REFINE_BUSY_RETRY_MS = 650;
 const INTERACTIVE_RENDER_MIN_INTERVAL_MS = 90;
 const INTERACTIVE_RENDER_SCALE = 0.28;
 const IDLE_RENDER_SCALE = 0.6;
@@ -115,6 +116,29 @@ function clearRefinedFrame(latencyText = "Refine: -- ms") {
   refineLatency.textContent = latencyText;
 }
 
+function setRawFrame(frame) {
+  rawImage.src = frame.image_data_url;
+  renderTime.textContent = `Render: ${frame.render_ms} ms | ${frame.renderer}`;
+}
+
+function formatRefineLatency(refined) {
+  if (refined.status === "busy") return "Refine: busy";
+
+  const latency = Number(refined.latency_ms);
+  const timings = refined.timings_ms || {};
+  const workerMs = Number(timings.worker_roundtrip_ms ?? timings.subprocess_ms);
+  const latencyText = Number.isFinite(latency)
+    ? `${latency.toFixed(0)} ms`
+    : "-- ms";
+
+  if (Number.isFinite(workerMs) && workerMs > 0) {
+    const label = timings.worker_roundtrip_ms ? "worker" : "subprocess";
+    return `Refine: ${latencyText} | ${label} ${workerMs.toFixed(0)} ms`;
+  }
+
+  return `Refine: ${latencyText}`;
+}
+
 function updateCameraReadout() {
   const [x, y, z] = camera.target;
   cameraReadout.textContent =
@@ -177,15 +201,6 @@ function renderSize(quality) {
   };
 }
 
-function isPlaceholderFrame(frame) {
-  const imageData = frame.image_data_url || "";
-  const renderer = frame.renderer || "";
-  return (
-    imageData.startsWith("data:image/svg+xml") ||
-    renderer.startsWith("mock-")
-  );
-}
-
 async function renderFrame(quality = "interactive") {
   const seq = ++renderSeq;
   const requestedCameraVersion = cameraVersion;
@@ -200,8 +215,7 @@ async function renderFrame(quality = "interactive") {
 
   if (seq !== renderSeq) return null;
   if (quality === "idle" && requestedCameraVersion !== cameraVersion) return null;
-  rawImage.src = result.image_data_url;
-  renderTime.textContent = `Render: ${result.render_ms} ms | ${result.renderer}`;
+  setRawFrame(result);
   return result;
 }
 
@@ -258,33 +272,41 @@ async function runIdleRefine() {
   const seq = ++refineSeq;
   const requestedCameraVersion = cameraVersion;
   let controller = null;
+  const size = renderSize("idle");
   cameraStateLabel.textContent = "Camera idle";
   cameraStateLabel.className = "status-ok";
   setPipeline("Refining", "status-busy");
   refineLatency.textContent = "Refine: running";
 
   try {
-    const raw = await renderFrame("idle");
-    if (!raw || seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
-
-    if (isPlaceholderFrame(raw)) {
-      setRefinedFrame(raw.image_data_url);
-      refineLatency.textContent = "Refine: skipped";
-      setFallbackState(true, "SVG placeholder input is not sent to Difix3D");
-      setPipeline("Placeholder ready", "status-ok");
-      return;
-    }
-
     controller = new AbortController();
     activeRefineController = controller;
-    const refined = await postJson("/api/refine", {
-      image_data_url: raw.image_data_url,
+    const view = await postJson("/api/refine-view", {
       camera: cameraSnapshot(),
+      width: size.width,
+      height: size.height,
+      quality: "idle",
     }, { signal: controller.signal });
     if (seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
 
+    if (view.raw) {
+      setRawFrame(view.raw);
+    }
+
+    const refined = view.refined;
+    if (refined.status === "busy") {
+      refineLatency.textContent = formatRefineLatency(refined);
+      setPipeline("Refine busy; retrying", "status-busy");
+      window.setTimeout(() => {
+        if (seq === refineSeq && requestedCameraVersion === cameraVersion) {
+          runIdleRefine();
+        }
+      }, REFINE_BUSY_RETRY_MS);
+      return;
+    }
+
     setRefinedFrame(refined.image_data_url);
-    refineLatency.textContent = `Refine: ${refined.latency_ms} ms`;
+    refineLatency.textContent = formatRefineLatency(refined);
     setFallbackState(refined.fallback_mode, refined.message);
     setPipeline(refined.status === "fallback" ? "Fallback done" : "Refine done", "status-ok");
   } catch (error) {

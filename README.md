@@ -73,7 +73,31 @@ Configuration options:
 ```bash
 REFINER_BACKEND=auto
 DIFIX3D_TIMEOUT_SECONDS=120
+DIFIX3D_WORKER_COMMAND=''   # persistent worker, preferred for interactive demos
+DIFIX3D_COMMAND=''          # one-shot command fallback
 ```
+
+For interactive latency, prefer a persistent worker. It loads the Difix3D model
+once and reuses it for later idle viewpoints:
+
+```bash
+git clone https://github.com/nv-tlabs/Difix3D.git /path/to/Difix3D
+cd /path/to/Difix3D
+pip install -r requirements.txt
+
+cd /path/to/Computer_Graphics/src
+export REFINER_BACKEND=difix3d_plus
+export DIFIX3D_REPO=/path/to/Difix3D
+export DIFIX3D_MODEL_NAME=nvidia/difix
+export DIFIX3D_TIMEOUT_SECONDS=180
+export DIFIX3D_LOCAL_FILES_ONLY=1
+export DIFIX3D_WORKER_COMMAND='/path/to/miniconda3/envs/difix3d/bin/python scripts/difix3d_hf_worker.py'
+export APP_RELOAD=0
+./scripts/run_dev.sh
+```
+
+The first worker request still pays model load time. Later requests avoid
+restarting Python and avoid reloading the pipeline onto the GPU.
 
 Use a CLI adapter when you have a command that can read one image and write one
 image:
@@ -143,6 +167,20 @@ DIFIX3D_MAX_SIDE=512
 DIFIX3D_REF_IMAGE=/path/to/reference.png
 ```
 
+Performance notes:
+
+- `DIFIX3D_WORKER_COMMAND` is preferred over `DIFIX3D_COMMAND` because the
+  command adapter starts a new Python process for every frame.
+- Avoid `conda run` inside the command path; use the environment's Python
+  executable directly.
+- `/api/refine-view` renders and refines in one backend request, reducing the
+  browser-to-backend base64 round trip used by the older `/api/render` +
+  `/api/refine` flow.
+- If one refinement is already running, new idle requests return `busy`; the UI
+  retries instead of starting another GPU-heavy job.
+- Refinement responses include `timings_ms`, including `subprocess_ms` for
+  one-shot commands or `worker_roundtrip_ms` for persistent workers.
+
 Use a Python adapter when you have an importable function:
 
 ```bash
@@ -163,6 +201,7 @@ arguments. It may return a data URL, bytes, an output path, a dict containing
 - `GET /api/scenes`
 - `POST /api/render`
 - `POST /api/refine`
+- `POST /api/refine-view`
 
 ## Current Frontend Behavior
 
@@ -172,7 +211,8 @@ arguments. It may return a data URL, bytes, an output path, a dict containing
 - Arrow keys rotate, `W/A/S/D` pans, `+/-` zooms, and `R` resets the camera when the viewer has focus.
 - Enter a PLY path in the top bar to switch scenes without restarting the server.
 - While the camera is moving, the browser requests lower-resolution raw renders.
-- After 400 ms of camera idle time, the frontend requests a 60%-scale idle render and sends that image to `/api/refine`.
+- After 400 ms of camera idle time, the frontend calls `/api/refine-view`, which renders and refines the current view in one backend request.
+- If the backend reports that a previous refinement is still running, the frontend keeps the raw view responsive and retries shortly.
 - The render status displays the renderer used for the latest frame. `gsplat-renderer` returns PNG frames from the selected PLY; `mock-svg-renderer` returns a camera-dependent SVG placeholder.
 - `MockRenderer` fallback is preserved for missing packages, unavailable CUDA, missing scene path, unsupported PLY properties, and gsplat runtime errors.
 

@@ -42,6 +42,7 @@ def test_refiner_factory_can_force_fallback(monkeypatch: MonkeyPatch) -> None:
 def test_refiner_factory_falls_back_without_adapter(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("REFINER_BACKEND", "difix3d_plus")
     monkeypatch.delenv("DIFIX3D_COMMAND", raising=False)
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     refiner = create_refiner()
@@ -67,6 +68,7 @@ def test_command_refiner_returns_command_output(tmp_path, monkeypatch: MonkeyPat
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}}",
     )
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     refiner = create_refiner()
@@ -89,6 +91,7 @@ def test_command_refiner_runtime_error_preserves_fallback(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}}",
     )
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     refiner = create_refiner()
@@ -118,6 +121,7 @@ def test_configured_refiner_skips_svg_placeholder_before_command(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}}",
     )
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     refiner = create_refiner()
@@ -128,3 +132,41 @@ def test_configured_refiner_skips_svg_placeholder_before_command(
     assert result.fallback_mode is True
     assert "SVG placeholder input" in result.message
     assert not marker.exists()
+
+
+def test_worker_refiner_reuses_persistent_process(
+    tmp_path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    count_path = tmp_path / "count.txt"
+    worker = tmp_path / "worker_refiner.py"
+    worker.write_text(
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"count_path = Path({str(count_path)!r})\n"
+        "count_path.write_text('1', encoding='ascii')\n"
+        "for line in sys.stdin:\n"
+        "    request = json.loads(line)\n"
+        "    Path(request['output']).write_bytes(Path(request['input']).read_bytes())\n"
+        "    print(json.dumps({'request_id': request['request_id'], 'ok': True}), flush=True)\n",
+        encoding="ascii",
+    )
+    monkeypatch.setenv("REFINER_BACKEND", "difix3d_plus")
+    monkeypatch.setenv("DIFIX3D_WORKER_COMMAND", f"{sys.executable} {worker}")
+    monkeypatch.delenv("DIFIX3D_COMMAND", raising=False)
+    monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
+
+    refiner = create_refiner()
+    first = refiner.refine(PNG_DATA_URL)
+    second = refiner.refine(PNG_DATA_URL)
+    close = getattr(refiner, "close", None)
+    if callable(close):
+        close()
+
+    assert first.image_data_url == PNG_DATA_URL
+    assert second.image_data_url == PNG_DATA_URL
+    assert first.refiner == "difix3d_plus-worker-refiner"
+    assert first.status == "ok"
+    assert second.status == "ok"
+    assert count_path.read_text(encoding="ascii") == "1"

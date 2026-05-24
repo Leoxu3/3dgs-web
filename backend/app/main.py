@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,11 +29,21 @@ def create_app() -> FastAPI:
     )
     refiner = create_refiner(settings=settings)
 
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            close = getattr(refiner, "close", None)
+            if callable(close):
+                close()
+
     app = FastAPI(
         title=settings.service_name,
         version="0.1.0",
         docs_url="/api/docs",
         redoc_url="/api/redoc",
+        lifespan=lifespan,
     )
     app.state.settings = settings
     app.state.scene_manager = scene_manager

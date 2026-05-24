@@ -28,6 +28,9 @@ class Settings:
     gsplat_device: str = field(default_factory=lambda: os.getenv("GSPLAT_DEVICE", "cuda"))
     refiner_backend: str = field(default_factory=lambda: os.getenv("REFINER_BACKEND", "auto"))
     difix3d_command: str = field(default_factory=lambda: os.getenv("DIFIX3D_COMMAND", ""))
+    difix3d_worker_command: str = field(
+        default_factory=lambda: os.getenv("DIFIX3D_WORKER_COMMAND", "")
+    )
     difix3d_python_callable: str = field(
         default_factory=lambda: os.getenv("DIFIX3D_PYTHON_CALLABLE", "")
     )

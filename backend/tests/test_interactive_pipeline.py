@@ -32,6 +32,7 @@ def test_rendered_svg_placeholder_refinement_is_skipped(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}} {{camera}}",
     )
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     client = TestClient(create_app())
@@ -96,6 +97,7 @@ def test_raster_idle_refine_pipeline_passes_camera(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}} {{camera}}",
     )
+    monkeypatch.delenv("DIFIX3D_WORKER_COMMAND", raising=False)
     monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
 
     client = TestClient(create_app())
