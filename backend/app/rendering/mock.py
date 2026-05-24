@@ -58,13 +58,16 @@ class MockRenderer:
         secondary = "#f2bf5e" if quality == "interactive" else "#49b6ff"
         safe_scene_label = html.escape(scene_label)
         safe_quality = html.escape(quality)
-        safe_fallback_reason = html.escape(self.fallback_reason or "")
+        min_dim = min(width, height)
+        ui = MockOverlayMetrics(height=height, min_dim=min_dim)
+        safe_fallback_reason = html.escape(short_status_text(self.fallback_reason or ""))
         fallback_markup = (
-            f'<text x="28" y="104" font-size="14" fill="#f2bf5e">Fallback: {safe_fallback_reason}</text>'
+            f'<text x="{ui.margin:.1f}" y="{ui.meta_y + ui.line_height:.1f}" '
+            f'font-size="{ui.body_font:.2f}" fill="#f2bf5e">'
+            f"Fallback: {safe_fallback_reason}</text>"
             if safe_fallback_reason
             else ""
         )
-        min_dim = min(width, height)
         camera_scale = max(0.35, min(2.4, 3.0 / max(camera.distance, 0.1)))
         target_x = camera.target[0] if len(camera.target) > 0 else 0.0
         vertical_index = camera_up_axis_index(camera.up_axis)
@@ -97,12 +100,12 @@ class MockRenderer:
   <circle cx="{center_x:.1f}" cy="{center_y:.1f}" r="{min_dim * 0.055 * camera_scale:.1f}" fill="{secondary}" opacity="0.42"/>
   {point_markup}
   <g fill="#f5f7fb" font-family="Inter, Arial, sans-serif">
-    <text x="28" y="44" font-size="20" font-weight="700">Raw 3DGS Render Placeholder</text>
-    <text x="28" y="76" font-size="14" fill="#aeb8c6">Renderer: {self.name} | Quality: {safe_quality}</text>
+    <text x="{ui.margin:.1f}" y="{ui.title_y:.1f}" font-size="{ui.title_font:.2f}" font-weight="700">Raw 3DGS Render Placeholder</text>
+    <text x="{ui.margin:.1f}" y="{ui.meta_y:.1f}" font-size="{ui.body_font:.2f}" fill="#aeb8c6">Renderer: {self.name} | Quality: {safe_quality}</text>
     {fallback_markup}
-    <text x="28" y="{height - 92}" font-size="14">Yaw {camera.yaw:.2f} | Pitch {camera.pitch:.2f} | Distance {camera.distance:.2f}</text>
-    <text x="28" y="{height - 64}" font-size="14">Target [{target}] | FOV {camera.fov:.1f} | Mock view x/z {target_x:.2f}/{target_z:.2f}</text>
-    <text x="28" y="{height - 36}" font-size="14" fill="#aeb8c6">Scene: {safe_scene_label}</text>
+    <text x="{ui.margin:.1f}" y="{ui.footer_y:.1f}" font-size="{ui.body_font:.2f}">Yaw {camera.yaw:.2f} | Pitch {camera.pitch:.2f} | Distance {camera.distance:.2f}</text>
+    <text x="{ui.margin:.1f}" y="{ui.footer_y + ui.line_height:.1f}" font-size="{ui.body_font:.2f}">Target [{target}] | FOV {camera.fov:.1f} | Mock view x/z {target_x:.2f}/{target_z:.2f}</text>
+    <text x="{ui.margin:.1f}" y="{ui.footer_y + ui.line_height * 2:.1f}" font-size="{ui.body_font:.2f}" fill="#aeb8c6">Scene: {safe_scene_label}</text>
   </g>
 </svg>"""
 
@@ -172,3 +175,23 @@ def camera_up_axis_index(up_axis: str) -> int:
     if up_axis == "y":
         return 1
     return 2
+
+
+class MockOverlayMetrics:
+    """Scale SVG annotation text with the render size so CSS display size is stable."""
+
+    def __init__(self, height: int, min_dim: int) -> None:
+        self.margin = min_dim * 0.055
+        self.title_font = min_dim * 0.037
+        self.body_font = min_dim * 0.026
+        self.line_height = min_dim * 0.052
+        self.title_y = self.margin + self.title_font
+        self.meta_y = self.title_y + self.line_height
+        self.footer_y = height - self.margin - self.line_height * 2
+
+
+def short_status_text(value: str, limit: int = 96) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."

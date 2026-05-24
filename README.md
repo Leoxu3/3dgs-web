@@ -172,7 +172,7 @@ arguments. It may return a data URL, bytes, an output path, a dict containing
 - Arrow keys rotate, `W/A/S/D` pans, `+/-` zooms, and `R` resets the camera when the viewer has focus.
 - Enter a PLY path in the top bar to switch scenes without restarting the server.
 - While the camera is moving, the browser requests lower-resolution raw renders.
-- After 700 ms of camera idle time, the frontend requests an idle render and sends that image to `/api/refine`.
+- After 400 ms of camera idle time, the frontend requests a 60%-scale idle render and sends that image to `/api/refine`.
 - The render status displays the renderer used for the latest frame. `gsplat-renderer` returns PNG frames from the selected PLY; `mock-svg-renderer` returns a camera-dependent SVG placeholder.
 - `MockRenderer` fallback is preserved for missing packages, unavailable CUDA, missing scene path, unsupported PLY properties, and gsplat runtime errors.
 

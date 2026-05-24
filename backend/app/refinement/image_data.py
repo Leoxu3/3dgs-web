@@ -27,6 +27,7 @@ _MIME_BY_EXTENSION = {
 
 
 def decode_data_url(image_data_url: str) -> tuple[bytes, str]:
+    mime_type = mime_type_from_data_url(image_data_url)
     try:
         header, payload = image_data_url.split(",", 1)
     except ValueError as exc:
@@ -36,7 +37,6 @@ def decode_data_url(image_data_url: str) -> tuple[bytes, str]:
         raise RefinerRuntimeError("expected image data URL")
 
     header_parts = header[5:].split(";")
-    mime_type = header_parts[0] or "application/octet-stream"
     if "base64" not in header_parts:
         raise RefinerRuntimeError("only base64 image data URLs are supported")
 
@@ -46,6 +46,19 @@ def decode_data_url(image_data_url: str) -> tuple[bytes, str]:
         raise RefinerRuntimeError("invalid base64 image payload") from exc
 
     return image_bytes, mime_type
+
+
+def mime_type_from_data_url(image_data_url: str) -> str:
+    try:
+        header, _payload = image_data_url.split(",", 1)
+    except ValueError as exc:
+        raise RefinerRuntimeError("expected image data URL") from exc
+
+    if not header.startswith("data:"):
+        raise RefinerRuntimeError("expected image data URL")
+
+    header_parts = header[5:].split(";")
+    return header_parts[0] or "application/octet-stream"
 
 
 def encode_data_url(image_bytes: bytes, mime_type: str) -> str:

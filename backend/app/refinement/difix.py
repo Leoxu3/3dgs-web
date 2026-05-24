@@ -33,6 +33,7 @@ from backend.app.refinement.image_data import (
     encode_data_url,
     extension_for_mime,
     mime_for_path,
+    mime_type_from_data_url,
 )
 
 if TYPE_CHECKING:
@@ -99,6 +100,14 @@ class SafeRefiner:
         image_data_url: str,
         camera: dict[str, Any] | None = None,
     ) -> RefinementResult:
+        if _is_svg_data_url(image_data_url):
+            return FallbackRefiner(
+                reason=(
+                    "Difix3D skipped / fallback mode "
+                    "(SVG placeholder input is not a raster frame)"
+                )
+            ).refine(image_data_url=image_data_url, camera=camera)
+
         try:
             return self.inner.refine(image_data_url=image_data_url, camera=camera)
         except Exception as exc:
@@ -355,6 +364,13 @@ def _detect_difix_modules() -> list[str]:
         for module_name in _MODULE_BY_BACKEND.values()
         if importlib.util.find_spec(module_name) is not None
     ]
+
+
+def _is_svg_data_url(image_data_url: str) -> bool:
+    try:
+        return mime_type_from_data_url(image_data_url).lower() == "image/svg+xml"
+    except RefinerRuntimeError:
+        return False
 
 
 def _load_python_callable(callable_path: str) -> Callable[..., Any]:

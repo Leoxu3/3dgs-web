@@ -212,20 +212,23 @@ button {
   display: none;
 }
 
-.mode-overlay {
+.mode-refined {
   display: block;
 }
 
-.mode-overlay .raw-frame,
-.mode-overlay .refined-frame {
+.mode-refined .raw-frame,
+.mode-refined .refined-frame {
   position: absolute;
   inset: 0;
 }
 
-.mode-overlay .refined-frame {
-  opacity: 0.72;
-  mix-blend-mode: screen;
+.mode-refined .refined-frame {
+  display: none;
   pointer-events: none;
+}
+
+.mode-refined.has-refined .refined-frame {
+  display: block;
 }
 
 .mode-side-by-side {
@@ -249,6 +252,14 @@ button {
 #cameraReadout {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+#pipelineState,
+#fallbackState {
+  min-width: 0;
+  max-width: min(42vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-ok {
@@ -298,5 +309,10 @@ button {
   .mode-side-by-side {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  #pipelineState,
+  #fallbackState {
+    max-width: 100%;
   }
 }

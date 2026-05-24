@@ -1,3 +1,4 @@
+import base64
 import sys
 
 from pytest import MonkeyPatch
@@ -10,6 +11,10 @@ PNG_DATA_URL = (
     "data:image/png;base64,"
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwAD"
     "hgGAWjR9awAAAABJRU5ErkJggg=="
+)
+SVG_DATA_URL = (
+    "data:image/svg+xml;base64,"
+    + base64.b64encode(b"<svg xmlns='http://www.w3.org/2000/svg'></svg>").decode("ascii")
 )
 
 
@@ -93,3 +98,33 @@ def test_command_refiner_runtime_error_preserves_fallback(
     assert result.status == "fallback"
     assert result.fallback_mode is True
     assert "failed / fallback mode" in result.message
+
+
+def test_configured_refiner_skips_svg_placeholder_before_command(
+    tmp_path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    marker = tmp_path / "command-ran.txt"
+    script = tmp_path / "marker_refiner.py"
+    script.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        f"Path({str(marker)!r}).write_text('ran', encoding='ascii')\n"
+        "Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes())\n",
+        encoding="ascii",
+    )
+    monkeypatch.setenv("REFINER_BACKEND", "difix3d")
+    monkeypatch.setenv(
+        "DIFIX3D_COMMAND",
+        f"{sys.executable} {script} {{input}} {{output}}",
+    )
+    monkeypatch.delenv("DIFIX3D_PYTHON_CALLABLE", raising=False)
+
+    refiner = create_refiner()
+    result = refiner.refine(SVG_DATA_URL)
+
+    assert result.image_data_url == SVG_DATA_URL
+    assert result.status == "fallback"
+    assert result.fallback_mode is True
+    assert "SVG placeholder input" in result.message
+    assert not marker.exists()

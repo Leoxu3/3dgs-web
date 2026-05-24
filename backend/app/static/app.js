@@ -15,8 +15,10 @@ const refineLatency = document.querySelector("#refineLatency");
 const fallbackState = document.querySelector("#fallbackState");
 const modeTabs = Array.from(document.querySelectorAll(".mode-tab"));
 
-const IDLE_DELAY_MS = 700;
+const IDLE_DELAY_MS = 400;
 const INTERACTIVE_RENDER_MIN_INTERVAL_MS = 90;
+const INTERACTIVE_RENDER_SCALE = 0.28;
+const IDLE_RENDER_SCALE = 0.6;
 const CAMERA_LIMITS = {
   minPitch: -1.45,
   maxPitch: 1.45,
@@ -55,6 +57,25 @@ function setPipeline(message, className = "") {
   pipelineState.className = className;
 }
 
+function setFallbackState(enabled, message = "") {
+  const summary = enabled ? summarizeFallbackMessage(message) : "off";
+  fallbackState.textContent = `Fallback: ${summary}`;
+  fallbackState.title = message || "";
+  fallbackState.className = enabled ? "status-busy" : "status-ok";
+}
+
+function summarizeFallbackMessage(message) {
+  if (!message) return "on";
+  const compact = message.replace(/\s+/g, " ").trim();
+  const lower = compact.toLowerCase();
+  if (lower.includes("placeholder")) return "placeholder";
+  if (lower.includes("svg")) return "placeholder";
+  if (lower.includes("unavailable")) return "unavailable";
+  if (lower.includes("failed")) return "failed";
+  if (compact.length <= 42) return compact;
+  return `${compact.slice(0, 39)}...`;
+}
+
 function isAbort(error) {
   return error.name === "AbortError";
 }
@@ -76,8 +97,21 @@ function cancelActiveRefinement() {
   activeRefineController = null;
 }
 
+function updateRefinedAvailability() {
+  viewer.classList.toggle(
+    "has-refined",
+    refinedImage.hasAttribute("src") && refinedImage.getAttribute("src") !== ""
+  );
+}
+
+function setRefinedFrame(imageDataUrl) {
+  refinedImage.src = imageDataUrl;
+  updateRefinedAvailability();
+}
+
 function clearRefinedFrame(latencyText = "Refine: -- ms") {
   refinedImage.removeAttribute("src");
+  updateRefinedAvailability();
   refineLatency.textContent = latencyText;
 }
 
@@ -122,20 +156,34 @@ async function responseErrorMessage(response) {
 
 function renderSize(quality) {
   const rect = viewer.getBoundingClientRect();
-  const scale = quality === "idle" ? 1 : 0.28;
+  const baseWidth = Math.max(1, rect.width);
+  const baseHeight = Math.max(1, rect.height);
   const minWidth = quality === "idle" ? 320 : 240;
   const minHeight = quality === "idle" ? 240 : 160;
-  let width = Math.max(minWidth, Math.round(rect.width * scale));
-  let height = Math.max(minHeight, Math.round(rect.height * scale));
+  const minScale = Math.max(minWidth / baseWidth, minHeight / baseHeight);
+  let scale = Math.max(
+    quality === "idle" ? IDLE_RENDER_SCALE : INTERACTIVE_RENDER_SCALE,
+    minScale
+  );
   if (quality === "interactive") {
-    const capScale = Math.min(1, 520 / width, 320 / height);
-    width = Math.max(minWidth, Math.round(width * capScale));
-    height = Math.max(minHeight, Math.round(height * capScale));
+    const capScale = Math.min(1, 520 / baseWidth, 320 / baseHeight);
+    if (capScale >= minScale) {
+      scale = Math.min(scale, capScale);
+    }
   }
   return {
-    width,
-    height,
+    width: Math.round(baseWidth * scale),
+    height: Math.round(baseHeight * scale),
   };
+}
+
+function isPlaceholderFrame(frame) {
+  const imageData = frame.image_data_url || "";
+  const renderer = frame.renderer || "";
+  return (
+    imageData.startsWith("data:image/svg+xml") ||
+    renderer.startsWith("mock-")
+  );
 }
 
 async function renderFrame(quality = "interactive") {
@@ -219,6 +267,14 @@ async function runIdleRefine() {
     const raw = await renderFrame("idle");
     if (!raw || seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
 
+    if (isPlaceholderFrame(raw)) {
+      setRefinedFrame(raw.image_data_url);
+      refineLatency.textContent = "Refine: skipped";
+      setFallbackState(true, "SVG placeholder input is not sent to Difix3D");
+      setPipeline("Placeholder ready", "status-ok");
+      return;
+    }
+
     controller = new AbortController();
     activeRefineController = controller;
     const refined = await postJson("/api/refine", {
@@ -227,12 +283,9 @@ async function runIdleRefine() {
     }, { signal: controller.signal });
     if (seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
 
-    refinedImage.src = refined.image_data_url;
+    setRefinedFrame(refined.image_data_url);
     refineLatency.textContent = `Refine: ${refined.latency_ms} ms`;
-    fallbackState.textContent = refined.fallback_mode
-      ? `Fallback: ${refined.message}`
-      : "Fallback: off";
-    fallbackState.className = refined.fallback_mode ? "status-busy" : "status-ok";
+    setFallbackState(refined.fallback_mode, refined.message);
     setPipeline(refined.status === "fallback" ? "Fallback done" : "Refine done", "status-ok");
   } catch (error) {
     if (isAbort(error)) return;
@@ -438,7 +491,7 @@ modeTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     const mode = tab.dataset.mode;
     modeTabs.forEach((item) => item.classList.toggle("is-active", item === tab));
-    viewer.classList.remove("mode-raw", "mode-overlay", "mode-side-by-side");
+    viewer.classList.remove("mode-raw", "mode-refined", "mode-side-by-side");
     viewer.classList.add(`mode-${mode}`);
   });
 });
@@ -517,8 +570,7 @@ async function loadScene() {
     if (!response.ok) throw new Error(await responseErrorMessage(response));
     const data = await response.json();
     updateSceneUi(data.scene);
-    fallbackState.textContent = data.fallback_mode ? "Fallback: on" : "Fallback: off";
-    fallbackState.className = data.fallback_mode ? "status-busy" : "status-ok";
+    setFallbackState(data.fallback_mode, data.fallback_mode ? "Difix3D unavailable / fallback mode" : "");
     setPipeline("Ready", "status-ok");
   } catch (error) {
     setPipeline(`Error: ${error.message}`, "status-error");
@@ -531,6 +583,7 @@ async function setScenePath(path) {
   try {
     const data = await postJson("/api/scene", { path });
     updateSceneUi(data.scene);
+    setFallbackState(data.fallback_mode, data.fallback_mode ? "Difix3D unavailable / fallback mode" : "");
     await loadSceneCandidates();
     resetRefinementForSceneChange(path.trim() ? "Scene loaded" : "Scene cleared");
   } catch (error) {
@@ -546,6 +599,7 @@ async function clearScenePath() {
   try {
     const data = await deleteJson("/api/scene");
     updateSceneUi(data.scene);
+    setFallbackState(data.fallback_mode, data.fallback_mode ? "Difix3D unavailable / fallback mode" : "");
     resetRefinementForSceneChange("Scene cleared");
   } catch (error) {
     setPipeline(`Scene error: ${error.message}`, "status-error");
