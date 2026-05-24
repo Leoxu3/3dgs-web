@@ -25,7 +25,7 @@ def create_app() -> FastAPI:
         renderer_backend=settings.renderer_backend,
         gsplat_device=settings.gsplat_device,
     )
-    refiner = create_refiner()
+    refiner = create_refiner(settings=settings)
 
     app = FastAPI(
         title=settings.service_name,

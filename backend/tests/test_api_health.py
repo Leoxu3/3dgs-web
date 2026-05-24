@@ -52,6 +52,27 @@ def test_render_endpoint_returns_data_url(monkeypatch: MonkeyPatch) -> None:
     assert data["renderer"] == "mock-svg-renderer"
 
 
+def test_refine_endpoint_returns_fallback_result(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDERER_BACKEND", "mock")
+    monkeypatch.setenv("REFINER_BACKEND", "fallback")
+    client = TestClient(create_app())
+    image_data_url = "data:image/png;base64,abc123"
+
+    response = client.post(
+        "/api/refine",
+        json={
+            "image_data_url": image_data_url,
+            "camera": {"yaw": 0},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["image_data_url"] == image_data_url
+    assert data["status"] == "fallback"
+    assert data["fallback_mode"] is True
+
+
 def test_renderer_backend_can_force_mock() -> None:
     renderer = factory.create_renderer(renderer_backend="mock")
 

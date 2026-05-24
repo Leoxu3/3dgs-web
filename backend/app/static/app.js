@@ -70,6 +70,17 @@ function cameraSnapshot() {
   };
 }
 
+function cancelActiveRefinement() {
+  if (!activeRefineController) return;
+  activeRefineController.abort();
+  activeRefineController = null;
+}
+
+function clearRefinedFrame(latencyText = "Refine: -- ms") {
+  refinedImage.removeAttribute("src");
+  refineLatency.textContent = latencyText;
+}
+
 function updateCameraReadout() {
   const [x, y, z] = camera.target;
   cameraReadout.textContent =
@@ -153,9 +164,8 @@ function scheduleIdleRefine() {
 
 function markMoving() {
   refineSeq += 1;
-  if (activeRefineController) {
-    activeRefineController.abort();
-  }
+  cancelActiveRefinement();
+  clearRefinedFrame("Refine: waiting for idle");
   cameraStateLabel.textContent = "Camera moving";
   cameraStateLabel.className = "status-busy";
   setPipeline("Rendering raw", "status-busy");
@@ -198,20 +208,24 @@ async function flushInteractiveRender() {
 
 async function runIdleRefine() {
   const seq = ++refineSeq;
+  const requestedCameraVersion = cameraVersion;
+  let controller = null;
   cameraStateLabel.textContent = "Camera idle";
   cameraStateLabel.className = "status-ok";
   setPipeline("Refining", "status-busy");
+  refineLatency.textContent = "Refine: running";
 
   try {
     const raw = await renderFrame("idle");
-    if (!raw || seq !== refineSeq) return;
+    if (!raw || seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
 
-    activeRefineController = new AbortController();
+    controller = new AbortController();
+    activeRefineController = controller;
     const refined = await postJson("/api/refine", {
       image_data_url: raw.image_data_url,
       camera: cameraSnapshot(),
-    }, { signal: activeRefineController.signal });
-    if (seq !== refineSeq) return;
+    }, { signal: controller.signal });
+    if (seq !== refineSeq || requestedCameraVersion !== cameraVersion) return;
 
     refinedImage.src = refined.image_data_url;
     refineLatency.textContent = `Refine: ${refined.latency_ms} ms`;
@@ -223,6 +237,10 @@ async function runIdleRefine() {
   } catch (error) {
     if (isAbort(error)) return;
     setPipeline(`Error: ${error.message}`, "status-error");
+  } finally {
+    if (controller && activeRefineController === controller) {
+      activeRefineController = null;
+    }
   }
 }
 
@@ -466,11 +484,9 @@ function setSceneControlsDisabled(disabled) {
 function resetRefinementForSceneChange(message) {
   refineSeq += 1;
   cameraVersion += 1;
-  if (activeRefineController) {
-    activeRefineController.abort();
-  }
-  refinedImage.removeAttribute("src");
-  refineLatency.textContent = "Refine: -- ms";
+  cancelActiveRefinement();
+  rawImage.removeAttribute("src");
+  clearRefinedFrame();
   cameraStateLabel.textContent = "Camera idle";
   cameraStateLabel.className = "status-ok";
   setPipeline(message, "status-ok");

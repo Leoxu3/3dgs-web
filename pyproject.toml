@@ -1,7 +1,7 @@
 [project]
 name = "server-friendly-3dgs-viewer"
 version = "0.1.0"
-description = "Headless-server friendly Web skeleton for an interactive 3D Gaussian Splatting refinement demo."
+description = "Headless-server friendly Web app for an interactive 3D Gaussian Splatting refinement demo."
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.110",

@@ -3,27 +3,9 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from typing import Any
 
-
-@dataclass(frozen=True)
-class RefinementResult:
-    image_data_url: str
-    latency_ms: float
-    refiner: str
-    status: str
-    message: str
-    fallback_mode: bool
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "image_data_url": self.image_data_url,
-            "latency_ms": round(self.latency_ms, 2),
-            "refiner": self.refiner,
-            "status": self.status,
-            "message": self.message,
-            "fallback_mode": self.fallback_mode,
-        }
+from backend.app.refinement.base import RefinementResult
 
 
 class FallbackRefiner:
@@ -33,7 +15,12 @@ class FallbackRefiner:
     def __init__(self, reason: str = "Difix3D unavailable / fallback mode") -> None:
         self.reason = reason
 
-    def refine(self, image_data_url: str) -> RefinementResult:
+    def refine(
+        self,
+        image_data_url: str,
+        camera: dict[str, Any] | None = None,
+    ) -> RefinementResult:
+        _ = camera
         start = time.perf_counter()
         elapsed_ms = (time.perf_counter() - start) * 1000
         return RefinementResult(

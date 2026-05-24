@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from backend.app.config import Settings
 from backend.app.rendering.camera import RenderRequest
 from backend.app.rendering.renderer import Renderer
-from backend.app.refinement.fallback import RefinementResult
+from backend.app.refinement.base import RefinementResult
 from backend.app.scene import SceneManager, ScenePathError
 
 
@@ -42,6 +42,7 @@ def create_api_router(
             "renderer": renderer.name,
             "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
+            "refiner_backend": settings.refiner_backend,
             "fallback_mode": refiner.is_fallback,
             "scene": scene_manager.describe_current(),
         }
@@ -53,6 +54,7 @@ def create_api_router(
             "renderer": renderer.name,
             "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
+            "refiner_backend": settings.refiner_backend,
             "fallback_mode": refiner.is_fallback,
         }
 
@@ -75,6 +77,7 @@ def create_api_router(
             "scene": scene_description,
             "renderer": renderer.name,
             "refiner": refiner.name,
+            "refiner_backend": settings.refiner_backend,
             "fallback_mode": refiner.is_fallback,
         }
 
@@ -86,6 +89,7 @@ def create_api_router(
             "scene": scene_description,
             "renderer": renderer.name,
             "refiner": refiner.name,
+            "refiner_backend": settings.refiner_backend,
             "fallback_mode": refiner.is_fallback,
         }
 
@@ -105,6 +109,7 @@ def create_api_router(
         result: RefinementResult = await run_in_threadpool(
             refiner.refine,
             request.image_data_url,
+            request.camera,
         )
         return result.to_dict()
 
