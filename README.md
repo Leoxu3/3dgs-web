@@ -30,14 +30,6 @@ The real renderer expects an INRIA-style 3D Gaussian Splatting PLY when availabl
 
 If the UI reports a gsplat fallback such as `CameraModelType` on `NoneType`, the Python package imported but its CUDA extension did not load. Confirm that `torch.cuda.is_available()` is true, `nvcc` or a matching prebuilt gsplat wheel is available, then reinstall/rebuild `gsplat`.
 
-Virtualenv example:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
 ## Run
 
 ```bash
@@ -54,7 +46,7 @@ APP_PORT=8000
 SCENE_PLY_PATH=/path/to/scene.ply
 RENDERER_BACKEND=auto   # auto, gsplat, or mock
 GSPLAT_DEVICE=cuda      # e.g. cuda or cuda:0
-REFINER_BACKEND=auto    # auto, fallback, difix3d, or difix3d_plus
+REFINER_BACKEND=auto    # auto, adapter, or fallback
 APP_RELOAD=1
 ```
 
@@ -63,22 +55,21 @@ The PLY path can also be changed from the Web UI at runtime. Relative paths are 
 
 ## Difix3D / Difix3D+ Refiner
 
-The refinement layer is intentionally adapter-based so the demo can run on servers
-where the exact Difix3D entrypoint differs. If no adapter is configured, or if an
-adapter fails at runtime, `/api/refine` returns the input image unchanged and marks
-the response as fallback mode.
+The backend does not hard-code one Difix3D entrypoint. It runs a configured
+adapter and keeps the viewer usable if the adapter is missing or fails.
 
-Configuration options:
+- `REFINER_BACKEND=auto` uses a configured adapter when one is present, otherwise
+  it falls back to returning the input image unchanged.
+- `REFINER_BACKEND=adapter` enables adapter mode explicitly. Missing or failing
+  adapters are still reported as fallback mode in the UI.
+- `REFINER_BACKEND=fallback` forces the no-op fallback refiner.
 
-```bash
-REFINER_BACKEND=auto
-DIFIX3D_TIMEOUT_SECONDS=120
-DIFIX3D_WORKER_COMMAND=''   # persistent worker, preferred for interactive demos
-DIFIX3D_COMMAND=''          # one-shot command fallback
-```
+`DIFIX3D_VARIANT` is only a label passed to adapters, such as `difix3d` or
+`difix3d_plus`. Older values like `REFINER_BACKEND=difix3d_plus` are still
+accepted, but new commands should use `REFINER_BACKEND=adapter` plus
+`DIFIX3D_VARIANT`.
 
-For interactive latency, prefer a persistent worker. It loads the Difix3D model
-once and reuses it for later idle viewpoints:
+Recommended setup for interactive demos:
 
 ```bash
 git clone https://github.com/nv-tlabs/Difix3D.git /path/to/Difix3D
@@ -86,111 +77,62 @@ cd /path/to/Difix3D
 pip install -r requirements.txt
 
 cd /path/to/Computer_Graphics/src
-export REFINER_BACKEND=difix3d_plus
+export REFINER_BACKEND=adapter
 export DIFIX3D_REPO=/path/to/Difix3D
 export DIFIX3D_MODEL_NAME=nvidia/difix
 export DIFIX3D_TIMEOUT_SECONDS=180
-export DIFIX3D_LOCAL_FILES_ONLY=1
-export DIFIX3D_WORKER_COMMAND='/path/to/miniconda3/envs/difix3d/bin/python scripts/difix3d_hf_worker.py'
+export DIFIX3D_WORKER_COMMAND='python scripts/difix3d_hf_worker.py'
 export APP_RELOAD=0
 ./scripts/run_dev.sh
 ```
 
-The first worker request still pays model load time. Later requests avoid
-restarting Python and avoid reloading the pipeline onto the GPU.
-
-Use a CLI adapter when you have a command that can read one image and write one
-image:
-
-```bash
-REFINER_BACKEND=difix3d_plus
-DIFIX3D_COMMAND='python -m your_difix_infer --input {input} --output {output} --camera {camera}'
-```
-
-Available command placeholders are `{input}`, `{output}`, `{camera}`, and
-`{variant}`. The backend writes the current frame to `{input}`, writes the camera
-JSON to `{camera}`, expects the refined image at `{output}`, and then converts it
-back to a browser data URL.
-
-If you do not have a local `checkpoints/model.pkl`, use the Hugging Face adapter.
-This follows the official diffusers quickstart and does not call
-`src/inference_difix.py`:
-
-```bash
-git clone https://github.com/nv-tlabs/Difix3D.git /path/to/Difix3D
-cd /path/to/Difix3D
-pip install -r requirements.txt
-
-cd /path/to/Computer_Graphics/src
-export REFINER_BACKEND=difix3d_plus
-export DIFIX3D_REPO=/path/to/Difix3D
-export DIFIX3D_MODEL_NAME=nvidia/difix
-export DIFIX3D_TIMEOUT_SECONDS=180
-export DIFIX3D_COMMAND='python scripts/difix3d_hf_adapter.py --input {input} --output {output} --camera {camera}'
-./scripts/run_dev.sh
-```
-
-The first run downloads the model through Hugging Face. If Difix3D is installed
-in a different conda environment, point the adapter at that Python executable:
+The worker loads the model on the first request and reuses it for later idle
+viewpoints. If Difix3D is installed in a separate conda environment, point the
+worker at that Python executable:
 
 ```bash
 export DIFIX3D_PYTHON=/path/to/miniconda3/envs/difix3d/bin/python
 ```
 
-If you do have a local checkpoint and want to use the upstream inference script,
-use the included `inference_difix.py` compatibility adapter because the upstream
-script writes to an output directory instead of an exact output file:
+Other adapter options, if the worker does not fit your environment. Configure
+only one adapter entry at a time; if multiple are set, the backend tries
+`DIFIX3D_PYTHON_CALLABLE`, then `DIFIX3D_WORKER_COMMAND`, then
+`DIFIX3D_COMMAND`.
 
 ```bash
-git clone https://github.com/nv-tlabs/Difix3D.git /path/to/Difix3D
-cd /path/to/Difix3D
-pip install -r requirements.txt
-
-cd /path/to/Computer_Graphics/src
-export REFINER_BACKEND=difix3d_plus
+export REFINER_BACKEND=adapter
 export DIFIX3D_REPO=/path/to/Difix3D
+
+# One-shot Hugging Face adapter. Simpler, but starts Python for every frame.
+export DIFIX3D_COMMAND='python scripts/difix3d_hf_adapter.py --input {input} --output {output} --camera {camera}'
+
+# Local checkpoint / upstream inference_difix.py compatibility adapter.
 export DIFIX3D_MODEL_PATH=/path/to/Difix3D/checkpoints/model.pkl
-export DIFIX3D_TIMEOUT_SECONDS=180
 export DIFIX3D_COMMAND='python scripts/difix3d_plus_adapter.py --input {input} --output {output} --camera {camera}'
-./scripts/run_dev.sh
+
+# Custom CLI adapter.
+export DIFIX3D_COMMAND='python -m your_difix_infer --input {input} --output {output} --camera {camera}'
+
+# Python callable adapter.
+export DIFIX3D_PYTHON_CALLABLE='my_difix_adapter:refine_image'
 ```
 
-Optional Difix3D+ adapter variables:
+For CLI adapters, the backend replaces `{input}`, `{output}`, `{camera}`, and
+`{variant}` before running the command. The adapter must read the input image and
+write the refined image to `{output}`.
+
+Common tuning variables:
 
 ```bash
-DIFIX3D_PYTHON=/path/to/difix/conda/env/bin/python
 DIFIX3D_PROMPT='remove degradation'
+DIFIX3D_VARIANT=difix3d_plus
 DIFIX3D_TIMESTEP=199
-DIFIX3D_HEIGHT=576
-DIFIX3D_WIDTH=1024
 DIFIX3D_MAX_SIDE=512
+DIFIX3D_HEIGHT=0
+DIFIX3D_WIDTH=0
 DIFIX3D_REF_IMAGE=/path/to/reference.png
+DIFIX3D_LOCAL_FILES_ONLY=1  # use only when the Hugging Face model is cached
 ```
-
-Performance notes:
-
-- `DIFIX3D_WORKER_COMMAND` is preferred over `DIFIX3D_COMMAND` because the
-  command adapter starts a new Python process for every frame.
-- Avoid `conda run` inside the command path; use the environment's Python
-  executable directly.
-- `/api/refine-view` renders and refines in one backend request, reducing the
-  browser-to-backend base64 round trip used by the older `/api/render` +
-  `/api/refine` flow.
-- If one refinement is already running, new idle requests return `busy`; the UI
-  retries instead of starting another GPU-heavy job.
-- Refinement responses include `timings_ms`, including `subprocess_ms` for
-  one-shot commands or `worker_roundtrip_ms` for persistent workers.
-
-Use a Python adapter when you have an importable function:
-
-```bash
-REFINER_BACKEND=difix3d
-DIFIX3D_PYTHON_CALLABLE='my_difix_adapter:refine_image'
-```
-
-The callable may accept `image_data_url`, `camera`, and `variant` keyword
-arguments. It may return a data URL, bytes, an output path, a dict containing
-`image_data_url` / `data_url` / `output_path` / `bytes`, or a `RefinementResult`.
 
 ## Endpoints
 
@@ -221,8 +163,3 @@ arguments. It may return a data URL, bytes, an output path, a dict containing
 ```bash
 pytest
 ```
-
-## Next Implementation Steps
-
-- Add a project-specific Difix3D / Difix3D+ adapter command or Python callable for the target server environment.
-- Improve camera calibration / scene normalization for different 3DGS datasets.

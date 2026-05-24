@@ -46,6 +46,7 @@ def create_api_router(
             "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
             "refiner_backend": settings.refiner_backend,
+            "refiner_variant": getattr(refiner, "variant", ""),
             "fallback_mode": refiner.is_fallback,
             "scene": scene_manager.describe_current(),
         }
@@ -58,6 +59,7 @@ def create_api_router(
             "renderer_backend": settings.renderer_backend,
             "refiner": refiner.name,
             "refiner_backend": settings.refiner_backend,
+            "refiner_variant": getattr(refiner, "variant", ""),
             "fallback_mode": refiner.is_fallback,
         }
 
@@ -81,6 +83,7 @@ def create_api_router(
             "renderer": renderer.name,
             "refiner": refiner.name,
             "refiner_backend": settings.refiner_backend,
+            "refiner_variant": getattr(refiner, "variant", ""),
             "fallback_mode": refiner.is_fallback,
         }
 
@@ -93,6 +96,7 @@ def create_api_router(
             "renderer": renderer.name,
             "refiner": refiner.name,
             "refiner_backend": settings.refiner_backend,
+            "refiner_variant": getattr(refiner, "variant", ""),
             "fallback_mode": refiner.is_fallback,
         }
 

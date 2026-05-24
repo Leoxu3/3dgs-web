@@ -27,7 +27,8 @@ def test_rendered_svg_placeholder_refinement_is_skipped(
         encoding="ascii",
     )
     monkeypatch.setenv("RENDERER_BACKEND", "mock")
-    monkeypatch.setenv("REFINER_BACKEND", "difix3d_plus")
+    monkeypatch.setenv("REFINER_BACKEND", "adapter")
+    monkeypatch.setenv("DIFIX3D_VARIANT", "difix3d_plus")
     monkeypatch.setenv(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}} {{camera}}",
@@ -92,7 +93,8 @@ def test_raster_idle_refine_pipeline_passes_camera(
         encoding="ascii",
     )
     monkeypatch.setenv("RENDERER_BACKEND", "mock")
-    monkeypatch.setenv("REFINER_BACKEND", "difix3d_plus")
+    monkeypatch.setenv("REFINER_BACKEND", "adapter")
+    monkeypatch.setenv("DIFIX3D_VARIANT", "difix3d_plus")
     monkeypatch.setenv(
         "DIFIX3D_COMMAND",
         f"{sys.executable} {script} {{input}} {{output}} {{camera}}",

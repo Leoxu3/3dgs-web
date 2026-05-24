@@ -4,12 +4,13 @@ The real projects may be installed in different ways on lab machines, so this
 module provides a small stable abstraction around either a Python callable or a
 CLI command. If construction or runtime processing fails, the app returns the
 input frame through `FallbackRefiner` instead of breaking the viewer.
+`REFINER_BACKEND` selects adapter/fallback behavior; `DIFIX3D_VARIANT` is only a
+label passed through to custom adapters.
 """
 
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import inspect
 import json
 import os
@@ -45,10 +46,24 @@ if TYPE_CHECKING:
 
 _BACKEND_ALIASES = {
     "": "auto",
+    "auto": "auto",
     "none": "fallback",
     "off": "fallback",
     "disabled": "fallback",
     "fallback": "fallback",
+    "adapter": "adapter",
+    "configured": "adapter",
+    "external": "adapter",
+    "difix": "adapter",
+    "difix3d": "adapter",
+    "difix3d+": "adapter",
+    "difix3d-plus": "adapter",
+    "difix3d_plus": "adapter",
+    "difix3dplus": "adapter",
+    "plus": "adapter",
+}
+
+_VARIANT_ALIASES = {
     "difix": "difix3d",
     "difix3d": "difix3d",
     "difix3d+": "difix3d_plus",
@@ -58,15 +73,11 @@ _BACKEND_ALIASES = {
     "plus": "difix3d_plus",
 }
 
-_MODULE_BY_BACKEND = {
-    "difix3d": "difix3d",
-    "difix3d_plus": "difix3d_plus",
-}
-
 
 @dataclass(frozen=True)
 class DifixRefinerConfig:
     backend: str = "auto"
+    variant: str = ""
     command_template: str = ""
     worker_command_template: str = ""
     python_callable: str = ""
@@ -77,6 +88,7 @@ class DifixRefinerConfig:
         if settings is None:
             return cls(
                 backend=os.getenv("REFINER_BACKEND", "auto"),
+                variant=os.getenv("DIFIX3D_VARIANT", ""),
                 command_template=os.getenv("DIFIX3D_COMMAND", ""),
                 worker_command_template=os.getenv("DIFIX3D_WORKER_COMMAND", ""),
                 python_callable=os.getenv("DIFIX3D_PYTHON_CALLABLE", ""),
@@ -85,6 +97,7 @@ class DifixRefinerConfig:
 
         return cls(
             backend=settings.refiner_backend,
+            variant=settings.difix3d_variant,
             command_template=settings.difix3d_command,
             worker_command_template=settings.difix3d_worker_command,
             python_callable=settings.difix3d_python_callable,
@@ -100,6 +113,7 @@ class SafeRefiner:
     def __init__(self, inner: Refiner) -> None:
         self.inner = inner
         self.name = inner.name
+        self.variant = getattr(inner, "variant", "")
 
     def close(self) -> None:
         close = getattr(self.inner, "close", None)
@@ -134,12 +148,12 @@ class SafeRefiner:
 class CommandDifixRefiner:
     is_fallback = False
 
-    def __init__(self, backend: str, config: DifixRefinerConfig) -> None:
+    def __init__(self, variant: str, config: DifixRefinerConfig) -> None:
         if not config.command_template:
             raise RefinerUnavailable("DIFIX3D_COMMAND is not configured")
 
-        self.backend = backend
-        self.name = f"{backend}-command-refiner"
+        self.variant = variant
+        self.name = f"{variant}-command-refiner"
         self.command_template = config.command_template
         self.timeout_seconds = config.timeout_seconds
 
@@ -215,7 +229,7 @@ class CommandDifixRefiner:
             latency_ms=elapsed_ms,
             refiner=self.name,
             status="ok",
-            message=f"{self.backend} refinement complete",
+            message=f"{self.variant} adapter refinement complete",
             fallback_mode=False,
             timings_ms=timings,
         )
@@ -231,7 +245,7 @@ class CommandDifixRefiner:
                 input=str(input_path),
                 output=str(output_path),
                 camera=str(camera_path),
-                variant=self.backend,
+                variant=self.variant,
             )
         except KeyError as exc:
             raise RefinerRuntimeError(f"unknown command placeholder: {exc}") from exc
@@ -252,12 +266,12 @@ class WorkerDifixRefiner:
 
     is_fallback = False
 
-    def __init__(self, backend: str, config: DifixRefinerConfig) -> None:
+    def __init__(self, variant: str, config: DifixRefinerConfig) -> None:
         if not config.worker_command_template:
             raise RefinerUnavailable("DIFIX3D_WORKER_COMMAND is not configured")
 
-        self.backend = backend
-        self.name = f"{backend}-worker-refiner"
+        self.variant = variant
+        self.name = f"{variant}-worker-refiner"
         self.worker_command_template = config.worker_command_template
         self.timeout_seconds = config.timeout_seconds
         self._lock = threading.RLock()
@@ -315,7 +329,7 @@ class WorkerDifixRefiner:
             latency_ms=elapsed_ms,
             refiner=self.name,
             status="ok",
-            message=f"{self.backend} refinement complete",
+            message=f"{self.variant} adapter refinement complete",
             fallback_mode=False,
             timings_ms=timings,
         )
@@ -342,7 +356,7 @@ class WorkerDifixRefiner:
             "output": str(output_path),
             "camera": camera,
             "camera_path": str(camera_path),
-            "variant": self.backend,
+            "variant": self.variant,
         }
 
         try:
@@ -423,7 +437,7 @@ class WorkerDifixRefiner:
 
     def _worker_args(self) -> list[str]:
         try:
-            command = self.worker_command_template.format(variant=self.backend)
+            command = self.worker_command_template.format(variant=self.variant)
         except KeyError as exc:
             raise RefinerRuntimeError(f"unknown worker command placeholder: {exc}") from exc
 
@@ -449,12 +463,12 @@ class WorkerDifixRefiner:
 class PythonCallableDifixRefiner:
     is_fallback = False
 
-    def __init__(self, backend: str, config: DifixRefinerConfig) -> None:
+    def __init__(self, variant: str, config: DifixRefinerConfig) -> None:
         if not config.python_callable:
             raise RefinerUnavailable("DIFIX3D_PYTHON_CALLABLE is not configured")
 
-        self.backend = backend
-        self.name = f"{backend}-python-refiner"
+        self.variant = variant
+        self.name = f"{variant}-python-refiner"
         self.callable_path = config.python_callable
         self._callable = _load_python_callable(config.python_callable)
 
@@ -476,7 +490,7 @@ class PythonCallableDifixRefiner:
             latency_ms=elapsed_ms,
             refiner=self.name,
             status="ok",
-            message=f"{self.backend} refinement complete",
+            message=f"{self.variant} adapter refinement complete",
             fallback_mode=False,
         )
 
@@ -498,7 +512,7 @@ class PythonCallableDifixRefiner:
             return self._callable(
                 image_data_url=image_data_url,
                 camera=camera,
-                variant=self.backend,
+                variant=self.variant,
             )
 
         kwargs: dict[str, Any] = {}
@@ -509,7 +523,7 @@ class PythonCallableDifixRefiner:
         if "camera" in parameters:
             kwargs["camera"] = camera
         if "variant" in parameters:
-            kwargs["variant"] = self.backend
+            kwargs["variant"] = self.variant
         if kwargs:
             return self._callable(**kwargs)
 
@@ -530,6 +544,7 @@ class PythonCallableDifixRefiner:
 def create_refiner(settings: Settings | None = None) -> Refiner:
     config = DifixRefinerConfig.from_settings(settings)
     backend = _normalize_backend(config.backend)
+    variant = _resolve_variant(config)
 
     if backend == "fallback":
         return FallbackRefiner(
@@ -537,58 +552,74 @@ def create_refiner(settings: Settings | None = None) -> Refiner:
         )
 
     try:
-        refiner = _create_configured_refiner(backend=backend, config=config)
+        refiner = _create_configured_refiner(
+            backend=backend,
+            variant=variant,
+            config=config,
+        )
     except RefinerUnavailable as exc:
         return FallbackRefiner(reason=f"Difix3D unavailable / fallback mode ({exc})")
 
     return SafeRefiner(refiner)
 
 
-def _create_configured_refiner(backend: str, config: DifixRefinerConfig) -> Refiner:
+def _create_configured_refiner(
+    backend: str,
+    variant: str,
+    config: DifixRefinerConfig,
+) -> Refiner:
     if backend == "auto":
         if config.python_callable:
-            return PythonCallableDifixRefiner(backend="difix3d", config=config)
+            return PythonCallableDifixRefiner(variant=variant, config=config)
         if config.worker_command_template:
-            return WorkerDifixRefiner(backend="difix3d", config=config)
+            return WorkerDifixRefiner(variant=variant, config=config)
         if config.command_template:
-            return CommandDifixRefiner(backend="difix3d", config=config)
-        detected_modules = _detect_difix_modules()
-        if detected_modules:
-            detected = ", ".join(detected_modules)
-            raise RefinerUnavailable(
-                f"{detected} importable, but no DIFIX3D_COMMAND or "
-                "DIFIX3D_WORKER_COMMAND or DIFIX3D_PYTHON_CALLABLE adapter is configured"
-            )
+            return CommandDifixRefiner(variant=variant, config=config)
         raise RefinerUnavailable(
             "no DIFIX3D_COMMAND, DIFIX3D_WORKER_COMMAND, or "
             "DIFIX3D_PYTHON_CALLABLE adapter is configured"
         )
 
-    if backend not in _MODULE_BY_BACKEND:
+    if backend != "adapter":
         raise RefinerUnavailable(f"unsupported REFINER_BACKEND={backend!r}")
 
     if config.python_callable:
-        return PythonCallableDifixRefiner(backend=backend, config=config)
+        return PythonCallableDifixRefiner(variant=variant, config=config)
     if config.worker_command_template:
-        return WorkerDifixRefiner(backend=backend, config=config)
+        return WorkerDifixRefiner(variant=variant, config=config)
     if config.command_template:
-        return CommandDifixRefiner(backend=backend, config=config)
-
-    module_name = _MODULE_BY_BACKEND[backend]
-    if importlib.util.find_spec(module_name) is None:
-        raise RefinerUnavailable(
-            f"{module_name} is not importable and no adapter is configured"
-        )
+        return CommandDifixRefiner(variant=variant, config=config)
 
     raise RefinerUnavailable(
-        f"{module_name} is importable, but no DIFIX3D_COMMAND or "
-        "DIFIX3D_WORKER_COMMAND or DIFIX3D_PYTHON_CALLABLE adapter is configured"
+        "REFINER_BACKEND=adapter requires DIFIX3D_COMMAND, "
+        "DIFIX3D_WORKER_COMMAND, or DIFIX3D_PYTHON_CALLABLE"
     )
 
 
 def _normalize_backend(backend: str) -> str:
     normalized = backend.strip().lower().replace(" ", "_")
     return _BACKEND_ALIASES.get(normalized, normalized)
+
+
+def _resolve_variant(config: DifixRefinerConfig) -> str:
+    if config.variant.strip():
+        return _normalize_variant(config.variant)
+
+    backend_variant = _variant_from_legacy_backend(config.backend)
+    if backend_variant:
+        return backend_variant
+
+    return "difix3d"
+
+
+def _variant_from_legacy_backend(backend: str) -> str:
+    normalized = backend.strip().lower().replace(" ", "_")
+    return _VARIANT_ALIASES.get(normalized, "")
+
+
+def _normalize_variant(variant: str) -> str:
+    normalized = variant.strip().lower().replace(" ", "_")
+    return _VARIANT_ALIASES.get(normalized, normalized)
 
 
 def _float_env(name: str, default: float) -> float:
@@ -600,14 +631,6 @@ def _float_env(name: str, default: float) -> float:
 
 def _elapsed_ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000
-
-
-def _detect_difix_modules() -> list[str]:
-    return [
-        module_name
-        for module_name in _MODULE_BY_BACKEND.values()
-        if importlib.util.find_spec(module_name) is not None
-    ]
 
 
 def _is_svg_data_url(image_data_url: str) -> bool:
