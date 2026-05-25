@@ -33,6 +33,10 @@
           <button class="mode-tab" type="button" data-mode="refined">Refined</button>
           <button class="mode-tab" type="button" data-mode="side-by-side">Side by side</button>
         </div>
+        <div class="frame-actions" aria-label="Frame downloads">
+          <button id="saveRawFrame" type="button" disabled>Save raw</button>
+          <button id="saveRefinedFrame" type="button" disabled>Save refined</button>
+        </div>
       </header>
 
       <main class="workspace">
@@ -57,6 +61,6 @@
         <span id="fallbackState">Fallback: unknown</span>
       </footer>
     </div>
-    <script src="/static/app.js?v=shape-warmup" defer></script>
+    <script src="/static/app.js?v=frame-download" defer></script>
   </body>
 </html>

@@ -14,12 +14,15 @@ const renderTime = document.querySelector("#renderTime");
 const refineLatency = document.querySelector("#refineLatency");
 const fallbackState = document.querySelector("#fallbackState");
 const modeTabs = Array.from(document.querySelectorAll(".mode-tab"));
+const saveRawFrameButton = document.querySelector("#saveRawFrame");
+const saveRefinedFrameButton = document.querySelector("#saveRefinedFrame");
 
 const IDLE_DELAY_MS = 400;
 const REFINE_BUSY_RETRY_MS = 650;
 const INTERACTIVE_RENDER_MIN_INTERVAL_MS = 90;
 const INTERACTIVE_RENDER_SCALE = 0.28;
 const IDLE_RENDER_SCALE = 0.6;
+const RENDER_SIZE_STEP = 8;
 const CAMERA_LIMITS = {
   minPitch: -1.45,
   maxPitch: 1.45,
@@ -103,24 +106,70 @@ function cancelActiveRefinement() {
 function updateRefinedAvailability() {
   viewer.classList.toggle(
     "has-refined",
-    refinedImage.hasAttribute("src") && refinedImage.getAttribute("src") !== ""
+    hasFrame(refinedImage)
   );
+}
+
+function hasFrame(image) {
+  return image.hasAttribute("src") && image.getAttribute("src") !== "";
+}
+
+function updateFrameDownloadButtons() {
+  saveRawFrameButton.disabled = !hasFrame(rawImage);
+  saveRefinedFrameButton.disabled = !hasFrame(refinedImage);
 }
 
 function setRefinedFrame(imageDataUrl) {
   refinedImage.src = imageDataUrl;
   updateRefinedAvailability();
+  updateFrameDownloadButtons();
 }
 
 function clearRefinedFrame(latencyText = "Refine: -- ms") {
   refinedImage.removeAttribute("src");
   updateRefinedAvailability();
+  updateFrameDownloadButtons();
   refineLatency.textContent = latencyText;
+}
+
+function pendingIdleRefineText() {
+  return refinerWarmupDone ? "Refine: waiting for idle" : "Refine: -- ms";
 }
 
 function setRawFrame(frame) {
   rawImage.src = frame.image_data_url;
   renderTime.textContent = `Render: ${frame.render_ms} ms | ${frame.renderer}`;
+  updateFrameDownloadButtons();
+}
+
+function saveFrame(kind, image) {
+  const imageDataUrl = image.getAttribute("src") || "";
+  if (!imageDataUrl) return;
+
+  const link = document.createElement("a");
+  link.href = imageDataUrl;
+  link.download = frameFilename(kind, imageDataUrl, image);
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function frameFilename(kind, imageDataUrl, image) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const width = Number(image.naturalWidth);
+  const height = Number(image.naturalHeight);
+  const size = width > 0 && height > 0 ? `-${width}x${height}` : "";
+  return `3dgs-${kind}-${timestamp}${size}.${frameExtension(imageDataUrl)}`;
+}
+
+function frameExtension(imageDataUrl) {
+  const match = /^data:([^;,]+)/.exec(imageDataUrl);
+  const mimeType = match ? match[1].toLowerCase() : "";
+  if (mimeType === "image/svg+xml") return "svg";
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  return "png";
 }
 
 function formatRefineLatency(refined) {
@@ -238,9 +287,13 @@ function renderSize(quality) {
     }
   }
   return {
-    width: Math.round(baseWidth * scale),
-    height: Math.round(baseHeight * scale),
+    width: roundDownToMultiple(Math.round(baseWidth * scale), RENDER_SIZE_STEP),
+    height: roundDownToMultiple(Math.round(baseHeight * scale), RENDER_SIZE_STEP),
   };
+}
+
+function roundDownToMultiple(value, step) {
+  return Math.max(step, value - (value % step));
 }
 
 async function renderFrame(quality = "interactive") {
@@ -269,7 +322,7 @@ function scheduleIdleRefine() {
 function markMoving() {
   refineSeq += 1;
   cancelActiveRefinement();
-  clearRefinedFrame("Refine: waiting for idle");
+  clearRefinedFrame(pendingIdleRefineText());
   cameraStateLabel.textContent = "Camera moving";
   cameraStateLabel.className = "status-busy";
   setPipeline("Rendering raw", "status-busy");
@@ -687,9 +740,19 @@ sceneClear.addEventListener("click", () => {
   clearScenePath();
 });
 
+saveRawFrameButton.addEventListener("click", () => {
+  saveFrame("raw", rawImage);
+});
+
+saveRefinedFrameButton.addEventListener("click", () => {
+  saveFrame("refined", refinedImage);
+});
+
 window.addEventListener("resize", () => {
   cameraChanged();
 });
+
+updateFrameDownloadButtons();
 
 loadScene().then(() => {
   loadSceneCandidates();

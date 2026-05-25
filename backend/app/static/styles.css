@@ -45,7 +45,7 @@ button {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(190px, 0.9fr) minmax(320px, 1.35fr) auto;
+  grid-template-columns: minmax(190px, 0.85fr) minmax(320px, 1.2fr) auto auto;
   align-items: end;
   gap: 16px;
   padding: 14px 18px;
@@ -145,6 +145,27 @@ button {
 .mode-tab.is-active {
   background: var(--blue);
   color: #07111d;
+}
+
+.frame-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.frame-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.frame-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .statusbar {
@@ -283,6 +304,23 @@ button {
   color: var(--red);
 }
 
+@media (max-width: 1080px) {
+  .topbar {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .mode-tabs,
+  .frame-actions {
+    width: 100%;
+  }
+
+  .mode-tab,
+  .frame-actions button {
+    flex: 1;
+  }
+}
+
 @media (max-width: 760px) {
   .topbar {
     align-items: stretch;
@@ -298,12 +336,7 @@ button {
     padding-bottom: 0;
   }
 
-  .mode-tabs {
-    width: 100%;
-  }
-
   .mode-tab {
-    flex: 1;
     padding: 0 8px;
   }
 
