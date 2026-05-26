@@ -162,6 +162,37 @@ DIFIX3D_LOCAL_FILES_ONLY=1  # use only when the Hugging Face model is cached
 - The render status displays the renderer used for the latest frame. `gsplat-renderer` returns PNG frames from the selected PLY; `mock-svg-renderer` returns a camera-dependent SVG placeholder.
 - `MockRenderer` fallback is preserved for missing packages, unavailable CUDA, missing scene path, unsupported PLY properties, and gsplat runtime errors.
 
+## Benchmark Render / Refine Timings
+
+Start the server first, then collect timing samples through the HTTP API:
+
+```bash
+./scripts/run_dev.sh
+
+python scripts/benchmark_render_modes.py \
+  --base-url http://127.0.0.1:8000 \
+  --samples 100 \
+  --discard 10 \
+  --output benchmark_render_modes.csv
+```
+
+The CSV records moving raw render, idle raw render, and idle render+refine
+samples. It includes backend timing fields from the API and client wall-clock
+time measured by the script. The first `--discard` samples are kept in the CSV
+but excluded from the printed summary.
+
+For a real interaction profile, keep the default sizes: moving requests use
+`520x320`, and idle/refine requests use `960x540`. For a fair same-resolution
+renderer-cost comparison, use one size for every mode:
+
+```bash
+python scripts/benchmark_render_modes.py \
+  --same-size 960x540 \
+  --samples 100 \
+  --discard 10 \
+  --output benchmark_same_size.csv
+```
+
 ## Test
 
 ```bash
