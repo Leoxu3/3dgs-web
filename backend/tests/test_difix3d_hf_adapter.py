@@ -21,7 +21,7 @@ def test_hf_adapter_selects_default_model_names() -> None:
     assert adapter.select_model_name("custom/model", None) == "custom/model"
 
 
-def test_hf_adapter_rounds_dimensions_to_multiple_of_8() -> None:
+def test_hf_adapter_rounds_dimensions_to_nearest_multiple_of_8() -> None:
     adapter = load_adapter_module()
 
     assert adapter.select_dimensions(
@@ -30,7 +30,7 @@ def test_hf_adapter_rounds_dimensions_to_multiple_of_8() -> None:
         max_side=0,
         image_width=961,
         image_height=541,
-    ) == (960, 536)
+    ) == (960, 544)
     assert adapter.select_dimensions(
         requested_width=1024,
         requested_height=576,
@@ -56,7 +56,7 @@ def test_hf_adapter_caps_dimensions_by_default_max_side() -> None:
         max_side=512,
         image_width=1280,
         image_height=720,
-    ) == (448, 256)
+    ) == (456, 256)
 
 
 def test_hf_adapter_builds_worker_command() -> None:

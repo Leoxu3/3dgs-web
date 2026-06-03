@@ -270,9 +270,54 @@ async function responseErrorMessage(response) {
 }
 
 function renderSize(quality) {
-  const rect = viewer.getBoundingClientRect();
-  const baseWidth = Math.max(1, rect.width);
-  const baseHeight = Math.max(1, rect.height);
+  return renderSizesForViewport(viewerContentSize())[quality];
+}
+
+function renderSizesForViewport({ width: baseWidth, height: baseHeight }) {
+  const aspectRatio = baseWidth / baseHeight;
+  const candidates = {
+    interactive: renderSizeCandidates({
+      baseWidth,
+      baseHeight,
+      quality: "interactive",
+      aspectRatio,
+    }),
+    idle: renderSizeCandidates({
+      baseWidth,
+      baseHeight,
+      quality: "idle",
+      aspectRatio,
+    }),
+  };
+  const selected = {
+    interactive: selectBestRenderCandidate(candidates.interactive),
+    idle: selectBestRenderCandidate(candidates.idle),
+  };
+  const selectedSides = new Set(
+    [selected.interactive.aspectSide, selected.idle.aspectSide].filter((side) => side !== 0)
+  );
+
+  if (selectedSides.size <= 1) {
+    return renderSizeSelection(selected);
+  }
+
+  // Keep object-fit letterboxing on the same axis when switching between
+  // interactive and idle renders.
+  const wider = {
+    interactive: selectBestRenderCandidate(candidates.interactive, 1),
+    idle: selectBestRenderCandidate(candidates.idle, 1),
+  };
+  const narrower = {
+    interactive: selectBestRenderCandidate(candidates.interactive, -1),
+    idle: selectBestRenderCandidate(candidates.idle, -1),
+  };
+
+  return renderSizeSelection(
+    renderSelectionScore(wider) <= renderSelectionScore(narrower) ? wider : narrower
+  );
+}
+
+function renderSizeCandidates({ baseWidth, baseHeight, quality, aspectRatio }) {
   const minWidth = quality === "idle" ? 320 : 240;
   const minHeight = quality === "idle" ? 240 : 160;
   const minScale = Math.max(minWidth / baseWidth, minHeight / baseHeight);
@@ -286,14 +331,101 @@ function renderSize(quality) {
       scale = Math.min(scale, capScale);
     }
   }
+  return buildRenderSizeCandidates({
+    targetWidth: baseWidth * scale,
+    targetHeight: baseHeight * scale,
+    minWidth,
+    minHeight,
+    aspectRatio,
+  });
+}
+
+function viewerContentSize() {
+  const rect = viewer.getBoundingClientRect();
   return {
-    width: roundDownToMultiple(Math.round(baseWidth * scale), RENDER_SIZE_STEP),
-    height: roundDownToMultiple(Math.round(baseHeight * scale), RENDER_SIZE_STEP),
+    width: Math.max(1, viewer.clientWidth || rect.width),
+    height: Math.max(1, viewer.clientHeight || rect.height),
+  };
+}
+
+function buildRenderSizeCandidates({ targetWidth, targetHeight, minWidth, minHeight, aspectRatio }) {
+  const minRenderWidth = roundUpToMultiple(minWidth, RENDER_SIZE_STEP);
+  const minRenderHeight = roundUpToMultiple(minHeight, RENDER_SIZE_STEP);
+  const widths = nearbyMultiples(targetWidth, minRenderWidth);
+  const heights = nearbyMultiples(targetHeight, minRenderHeight);
+  const candidates = [];
+
+  for (const width of widths) {
+    for (const height of heights) {
+      const candidateAspect = width / height;
+      const aspectDelta = candidateAspect - aspectRatio;
+      const aspectError = Math.abs(aspectDelta) / aspectRatio;
+      const sizeError =
+        Math.abs(width - targetWidth) / Math.max(1, targetWidth) +
+        Math.abs(height - targetHeight) / Math.max(1, targetHeight);
+      candidates.push({
+        width,
+        height,
+        aspectSide: aspectDelta === 0 ? 0 : aspectDelta > 0 ? 1 : -1,
+        score: aspectError * 5 + sizeError,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => {
+    if (a.score !== b.score) return a.score - b.score;
+    return b.width * b.height - a.width * a.height;
+  });
+  return candidates;
+}
+
+function nearbyMultiples(targetValue, minValue) {
+  const base = roundDownToMultiple(Math.round(targetValue), RENDER_SIZE_STEP);
+  const values = new Set([
+    minValue,
+    roundDownToMultiple(Math.round(targetValue), RENDER_SIZE_STEP),
+    roundUpToMultiple(Math.round(targetValue), RENDER_SIZE_STEP),
+  ]);
+
+  for (let offset = -2; offset <= 2; offset += 1) {
+    const candidate = base + offset * RENDER_SIZE_STEP;
+    if (candidate >= minValue) values.add(candidate);
+  }
+
+  return Array.from(values).sort((a, b) => a - b);
+}
+
+function selectBestRenderCandidate(candidates, aspectSide = 0) {
+  const matching = candidates.find(
+    (candidate) =>
+      aspectSide === 0 || candidate.aspectSide === 0 || candidate.aspectSide === aspectSide
+  );
+  return matching || candidates[0];
+}
+
+function renderSelectionScore(selection) {
+  return selection.interactive.score + selection.idle.score;
+}
+
+function renderSizeSelection(selection) {
+  return {
+    interactive: {
+      width: selection.interactive.width,
+      height: selection.interactive.height,
+    },
+    idle: {
+      width: selection.idle.width,
+      height: selection.idle.height,
+    },
   };
 }
 
 function roundDownToMultiple(value, step) {
-  return Math.max(step, value - (value % step));
+  return Math.max(step, Math.floor(value / step) * step);
+}
+
+function roundUpToMultiple(value, step) {
+  return Math.max(step, Math.ceil(value / step) * step);
 }
 
 async function renderFrame(quality = "interactive") {

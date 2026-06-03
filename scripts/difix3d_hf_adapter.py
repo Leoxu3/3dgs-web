@@ -257,7 +257,7 @@ def resize_image(image: object, width: int, height: int) -> object:
 
 
 def round_to_multiple_of_8(value: int) -> int:
-    return max(8, value - (value % 8))
+    return max(8, ((value + 4) // 8) * 8)
 
 
 if __name__ == "__main__":

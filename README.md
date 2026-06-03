@@ -9,6 +9,8 @@ camera is idle, the frontend requests a higher-resolution render and refinement.
 If CUDA, `gsplat`, a scene file, or a Difix3D+ adapter is unavailable, the server
 falls back gracefully instead of requiring a desktop GUI stack.
 
+![3DGS Web Viewer demo](assets/video/demo.gif)
+
 Report: [paper/report.pdf](paper/report.pdf)
 
 ## Requirements
@@ -203,3 +205,8 @@ the printed summary.
 ```bash
 pytest
 ```
+
+## Related Repositories  
+We thank the authors of related repositories:
+1. Nerfstudio: https://github.com/nerfstudio-project/nerfstudio
+2. Difix3D+: https://github.com/nv-tlabs/Difix3D
