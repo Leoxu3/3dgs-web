@@ -11,7 +11,7 @@ falls back gracefully instead of requiring a desktop GUI stack.
 
 ![3DGS Web Viewer demo](assets/video/demo.gif)
 
-Report: [paper/report.pdf](paper/report.pdf)
+Report: [assets/paper/report.pdf](assets/paper/report.pdf)
 
 ## Requirements
 
@@ -207,6 +207,6 @@ pytest
 ```
 
 ## Related Repositories  
-We thank the authors of related repositories:
+This project builds upon the following open-source projects:
 1. Nerfstudio: https://github.com/nerfstudio-project/nerfstudio
 2. Difix3D+: https://github.com/nv-tlabs/Difix3D
