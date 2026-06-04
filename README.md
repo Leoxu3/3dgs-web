@@ -210,3 +210,4 @@ pytest
 This project builds upon the following open-source projects:
 1. Nerfstudio: https://github.com/nerfstudio-project/nerfstudio
 2. Difix3D+: https://github.com/nv-tlabs/Difix3D
+3. gsplat: https://github.com/nerfstudio-project/gsplat
